@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.border
+import com.guardianlink.app.components.*
 import com.guardianlink.app.R
 import com.guardianlink.app.data.GeofenceWktHelper
 import com.guardianlink.app.model.GeofenceZone
@@ -107,7 +109,8 @@ enum class MapStyle(val title: String) {
 fun MapScreen(
     onNavigateBack: () -> Unit = {},
     deviceViewModel: DeviceViewModel = viewModel(),
-    geofenceViewModel: GeofenceViewModel = viewModel()
+    geofenceViewModel: GeofenceViewModel = viewModel(),
+    isDarkMode: Boolean = LocalIsDarkMode.current
 ) {
     val status by deviceViewModel.status.collectAsState()
     val context = LocalContext.current
@@ -500,6 +503,7 @@ fun MapScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
+                .statusBarsPadding()
         ) {
             // Drawing Mode Banner (when actively drawing a shape)
             AnimatedVisibility(visible = geofenceViewModel.isDrawingMode) {
@@ -605,19 +609,16 @@ fun MapScreen(
 
             // Normal Top Header (Live Location, Layer Name, GPS Badge)
             AnimatedVisibility(visible = !geofenceViewModel.isDrawingMode) {
-                Card(
+                LiquidGlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = PorcelainWhite
-                    ),
-                    border = BorderStroke(1.dp, Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                    cornerRadius = 24.dp,
+                    elevation = 0.dp,
+                    isDark = isDarkMode
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -628,7 +629,7 @@ fun MapScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back to Home",
-                                tint = MaterialTheme.colorScheme.onSurface
+                                tint = if (isDarkMode) Color.White else TextPrimary
                             )
                         }
                         Spacer(modifier = Modifier.width(6.dp))
@@ -637,21 +638,22 @@ fun MapScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "Live Location",
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.ExtraBold,
                                     fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = if (isDarkMode) Color.White else TextPrimary
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = PrimaryBlue.copy(alpha = 0.12f)
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.18f) else PrimaryBlue.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.4f) else PrimaryBlue.copy(alpha = 0.25f))
                                 ) {
                                     Text(
                                         text = selectedStyle.title.split(" ").first(),
                                         fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = PrimaryBlue,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                     )
                                 }
                             }
@@ -659,7 +661,8 @@ fun MapScreen(
                             Text(
                                 text = if (status.hasValidLocation) "GPS: ${status.displayGps}" else "Acquiring GPS signal...",
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = FontWeight.Medium,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.75f) else TextSecondary
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -669,10 +672,18 @@ fun MapScreen(
                             modifier = Modifier
                                 .background(
                                     color = if (status.hasValidLocation)
-                                        OnlineGreen.copy(alpha = 0.15f)
+                                        LiquidNeonGreen.copy(alpha = 0.20f)
                                     else
-                                        AlertRed.copy(alpha = 0.15f),
+                                        LiquidRubyEmergency.copy(alpha = 0.20f),
                                     shape = RoundedCornerShape(20.dp)
+                                )
+                                .then(
+                                    Modifier.border(
+                                        1.dp,
+                                        if (status.hasValidLocation) LiquidNeonGreen.copy(alpha = 0.45f)
+                                        else LiquidRubyEmergency.copy(alpha = 0.45f),
+                                        RoundedCornerShape(20.dp)
+                                    )
                                 )
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
@@ -684,15 +695,15 @@ fun MapScreen(
                                     else
                                         Icons.Default.LocationOff,
                                     contentDescription = null,
-                                    tint = if (status.hasValidLocation) OnlineGreen else AlertRed,
+                                    tint = if (status.hasValidLocation) LiquidNeonGreen else LiquidRubyEmergency,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = if (status.hasValidLocation) "GPS Lock" else "No GPS",
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (status.hasValidLocation) OnlineGreen else AlertRed
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (status.hasValidLocation) LiquidNeonGreen else LiquidRubyEmergency
                                 )
                             }
                         }
@@ -744,16 +755,15 @@ fun MapScreen(
         }
 
         // 3. Floating Action Controls
-        // Left Floating FAB: Safe Zones Management
+        // Left Floating Safe Zones Button (Zero shadow, pure Liquid Glass)
         if (!geofenceViewModel.isDrawingMode) {
-            FloatingActionButton(
+            LiquidGlassCircleButton(
                 onClick = { showGeofenceSheet = true },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(bottom = 110.dp, start = 16.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = PrimaryBlue,
-                shape = CircleShape
+                    .padding(bottom = 196.dp, start = 16.dp),
+                size = 52.dp,
+                isDark = isDarkMode
             ) {
                 BadgedBox(
                     badge = {
@@ -762,28 +772,37 @@ fun MapScreen(
                         }
                     }
                 ) {
-                    Icon(imageVector = Icons.Default.Security, contentDescription = "Safe Zones")
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "Safe Zones",
+                        tint = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
         }
 
-        // Right Floating Controls Stack (Layer Switcher, Zoom +, Zoom -, Recenter)
+        // Right Floating Controls Stack (Layer Switcher, Zoom +, Zoom -, Recenter) - Zero shadow
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 110.dp, end = 16.dp),
+                .padding(bottom = 196.dp, end = 16.dp),
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Layer Switcher FAB & Dropdown
+            // Layer Switcher Button & Dropdown
             Box {
-                SmallFloatingActionButton(
+                LiquidGlassCircleButton(
                     onClick = { showLayerMenu = !showLayerMenu },
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    shape = CircleShape
+                    size = 46.dp,
+                    isDark = isDarkMode
                 ) {
-                    Icon(imageVector = Icons.Default.Layers, contentDescription = "Change Map Style")
+                    Icon(
+                        imageVector = Icons.Default.Layers,
+                        contentDescription = "Change Map Style",
+                        tint = if (isDarkMode) Color.White else PrimaryBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
 
                 DropdownMenu(
@@ -816,29 +835,37 @@ fun MapScreen(
                 }
             }
 
-            // Zoom In FAB (+)
-            SmallFloatingActionButton(
+            // Zoom In (+)
+            LiquidGlassCircleButton(
                 onClick = { mapViewRef?.controller?.zoomIn() },
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                shape = CircleShape
+                size = 46.dp,
+                isDark = isDarkMode
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Zoom In")
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Zoom In",
+                    tint = if (isDarkMode) Color.White else PrimaryBlue,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
-            // Zoom Out FAB (-)
-            SmallFloatingActionButton(
+            // Zoom Out (-)
+            LiquidGlassCircleButton(
                 onClick = { mapViewRef?.controller?.zoomOut() },
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                shape = CircleShape
+                size = 46.dp,
+                isDark = isDarkMode
             ) {
-                Icon(imageVector = Icons.Default.Remove, contentDescription = "Zoom Out")
+                Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = "Zoom Out",
+                    tint = if (isDarkMode) Color.White else PrimaryBlue,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
-            // Recenter FAB
+            // Recenter Button
             if (status.hasValidLocation) {
-                FloatingActionButton(
+                LiquidGlassCircleButton(
                     onClick = {
                         val lat = status.latitude
                         val lng = status.longitude
@@ -846,48 +873,55 @@ fun MapScreen(
                             mapViewRef?.controller?.animateTo(GeoPoint(lat, lng))
                         }
                     },
-                    containerColor = PrimaryBlue,
-                    contentColor = Color.White,
-                    shape = CircleShape
+                    size = 52.dp,
+                    containerColor = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                    contentColor = if (isDarkMode) LiquidCanvasDark else Color.White,
+                    isDark = isDarkMode
                 ) {
-                    Icon(imageVector = Icons.Default.MyLocation, contentDescription = "Recenter Map")
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "Recenter Map",
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
         }
 
-        // 4. Bottom Info Panel (Battery, Network, Device State)
-        Card(
+        // 4. Bottom Info Panel (Battery, Network, Device State) - Zero shadow, clean 50dp spacing below buttons
+        LiquidGlassCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp, start = 16.dp, end = 16.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                .padding(bottom = 88.dp, start = 16.dp, end = 16.dp),
+            cornerRadius = 24.dp,
+            elevation = 0.dp,
+            isDark = isDarkMode
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceAround
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 InfoChip(
                     label = "Battery",
                     value = status.battery,
                     color = if (status.battery.replace("%", "").toIntOrNull() ?: 100 > 20)
-                        OnlineGreen else AlertRed
+                        LiquidNeonGreen else LiquidRubyEmergency,
+                    isDark = isDarkMode
                 )
                 InfoChip(
                     label = "Network",
                     value = status.network,
-                    color = PrimaryBlue
+                    color = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                    isDark = isDarkMode
                 )
                 InfoChip(
                     label = "Device",
                     value = status.device,
-                    color = if (status.device == "Online") OnlineGreen else AlertRed
+                    color = if (status.device == "Online") LiquidNeonGreen else LiquidRubyEmergency,
+                    isDark = isDarkMode
                 )
             }
         }
@@ -1188,18 +1222,24 @@ private fun ShapeOptionItem(
 }
 
 @Composable
-private fun InfoChip(label: String, value: String, color: Color) {
+private fun InfoChip(
+    label: String,
+    value: String,
+    color: Color,
+    isDark: Boolean = false
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
             fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            fontWeight = FontWeight.Medium,
+            color = if (isDark) Color.White.copy(alpha = 0.70f) else TextSecondary
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = value,
             fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             color = color
         )
     }

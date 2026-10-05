@@ -3,6 +3,7 @@ package com.guardianlink.app.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -23,8 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.guardianlink.app.components.ClaySquircle
-import com.guardianlink.app.components.FluidWaveCanvas
+import com.guardianlink.app.components.*
 import com.guardianlink.app.model.Alert
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.viewmodel.AlertViewModel
@@ -39,9 +39,11 @@ enum class AlertFilter(val label: String) {
 @Composable
 fun AlertsScreen(
     onNavigateBack: () -> Unit = {},
-    alertViewModel: AlertViewModel = viewModel()
+    alertViewModel: AlertViewModel = viewModel(),
+    isDarkMode: Boolean = isSystemInDarkTheme()
 ) {
     val alerts by alertViewModel.alerts.collectAsState()
+    val isDark = isDarkMode
 
     var selectedFilter by remember { mutableStateOf(AlertFilter.ALL) }
     val acknowledgedAlerts = remember { mutableStateListOf<String>() }
@@ -60,21 +62,18 @@ fun AlertsScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Dual-tone fluid wave background
-        FluidWaveCanvas(
-            topColor = CosmicNavyDark,
-            bottomColor = ClayCanvasLight,
-            waveYRatio = 0.22f
-        )
+        // Liquid Glass Ambient Caustic Canvas
+        LiquidGlassCanvas(isDark = isDark)
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .padding(horizontal = 20.dp)
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Header in Cosmic Navy section
+            // Liquid Glass Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -84,71 +83,90 @@ fun AlertsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.size(40.dp)
+                    // Back Glass Button Pill
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clickable(onClick = onNavigateBack)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = if (isDark) Color.White else TextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
                     Column {
                         Text(
                             text = "Incident Alerts",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
+                            color = if (isDark) Color.White else TextPrimary
                         )
                         Text(
                             text = "Real-Time Safety Feed",
                             fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.75f)
+                            color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
                         )
                     }
                 }
 
                 if (alerts.isNotEmpty()) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = CoralEmergency.copy(alpha = 0.25f),
-                        border = BorderStroke(1.dp, CoralEmergency.copy(alpha = 0.4f))
+                        shape = RoundedCornerShape(16.dp),
+                        color = LiquidRubyEmergency.copy(alpha = 0.2f),
+                        border = BorderStroke(1.dp, LiquidRubyEmergency.copy(alpha = 0.5f))
                     ) {
                         Text(
                             text = "${alerts.size} Active",
-                            color = Color.White,
+                            color = if (isDark) Color.White else LiquidRubyEmergency,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Filter Pills in Porcelain Canvas
+            // Liquid Filter Capsule Tabs
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(AlertFilter.values()) { filter ->
                     val isSelected = selectedFilter == filter
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isSelected) ElectricBlueAccent else PorcelainWhite,
-                        border = BorderStroke(1.dp, if (isSelected) ElectricBlueAccent else Color.White),
-                        shadowElevation = if (isSelected) 4.dp else 2.dp,
-                        modifier = Modifier.clickable { selectedFilter = filter }
+                    val pillShape = RoundedCornerShape(18.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .clip(pillShape)
+                            .background(
+                                if (isSelected) {
+                                    Brush.linearGradient(LiquidGradientPrimary)
+                                } else {
+                                    if (isDark) Brush.linearGradient(listOf(LiquidGlassBgDarkElevated, LiquidGlassBgDark))
+                                    else Brush.linearGradient(listOf(Color.White.copy(alpha = 0.9f), Color.White.copy(alpha = 0.6f)))
+                                }
+                            )
+                            .clickable { selectedFilter = filter }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = filter.label,
-                            color = if (isSelected) Color.White else CosmicNavyDark,
+                            color = if (isSelected) Color.White else (if (isDark) Color.White.copy(alpha = 0.75f) else TextSecondary),
                             fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
                         )
                     }
                 }
@@ -161,20 +179,21 @@ fun AlertsScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    ClayEmptyAlertsState()
+                    LiquidEmptyAlertsState(isDark = isDark)
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 90.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filteredAlerts) { alert ->
                         val alertKey = "${alert.title}_${alert.time}"
                         val isAcked = acknowledgedAlerts.contains(alertKey)
-                        ClayAlertCard(
+                        LiquidAlertCard(
                             alert = alert,
                             isAcknowledged = isAcked,
+                            isDark = isDark,
                             onAcknowledge = {
                                 if (isAcked) acknowledgedAlerts.remove(alertKey)
                                 else acknowledgedAlerts.add(alertKey)
@@ -188,43 +207,43 @@ fun AlertsScreen(
 }
 
 @Composable
-private fun ClayAlertCard(
+private fun LiquidAlertCard(
     alert: Alert,
     isAcknowledged: Boolean,
+    isDark: Boolean,
     onAcknowledge: () -> Unit
 ) {
     val (icon, badgeColor) = when (alert.type) {
-        "danger" -> Icons.Default.Warning to CoralEmergency
-        "warning" -> Icons.Default.WarningAmber to AmberAccent
-        "success" -> Icons.Default.CheckCircle to GlowingMint
-        else -> Icons.Default.Info to ElectricBlueAccent
+        "danger" -> Icons.Default.Warning to LiquidRubyEmergency
+        "warning" -> Icons.Default.WarningAmber to LiquidHoneyGold
+        "success" -> Icons.Default.CheckCircle to LiquidNeonGreen
+        else -> Icons.Default.Info to LiquidNeonCyan
     }
 
-    ClaySquircle(
+    LiquidGlassCard(
         modifier = Modifier.fillMaxWidth(),
         cornerRadius = 22.dp,
-        backgroundColor = if (isAcknowledged) Color(0xFFF3F5FA) else PorcelainWhite,
-        borderColor = if (isAcknowledged) Color(0xFFE2E8F0) else Color.White,
-        elevation = if (isAcknowledged) 2.dp else 6.dp
+        elevation = if (isAcknowledged) 3.dp else 8.dp,
+        isDark = isDark,
+        glowColor = if (isAcknowledged) Color.Transparent else badgeColor.copy(alpha = 0.22f)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 3D Jelly Status Icon Badge
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(badgeColor.copy(alpha = 0.15f)),
+                    .background(Brush.linearGradient(listOf(badgeColor, badgeColor.copy(alpha = 0.7f)))),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = badgeColor,
-                    modifier = Modifier.size(22.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
@@ -235,13 +254,13 @@ private fun ClayAlertCard(
                     text = alert.title,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CosmicNavyDark
+                    color = if (isDark) Color.White else TextPrimary
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "${alert.type.uppercase()} • ${alert.time}",
                     fontSize = 11.sp,
-                    color = TextSecondary,
+                    color = if (isDark) Color.White.copy(alpha = 0.6f) else TextSecondary,
                     lineHeight = 15.sp
                 )
             }
@@ -250,13 +269,13 @@ private fun ClayAlertCard(
 
             IconButton(
                 onClick = onAcknowledge,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(38.dp)
             ) {
                 Icon(
                     imageVector = if (isAcknowledged) Icons.Default.CheckCircle else Icons.Default.CheckCircleOutline,
                     contentDescription = "Acknowledge",
-                    tint = if (isAcknowledged) GlowingMint else OfflineGray,
-                    modifier = Modifier.size(22.dp)
+                    tint = if (isAcknowledged) LiquidNeonGreen else (if (isDark) Color.White.copy(alpha = 0.4f) else OfflineGray),
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -264,30 +283,32 @@ private fun ClayAlertCard(
 }
 
 @Composable
-private fun ClayEmptyAlertsState() {
-    ClaySquircle(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+private fun LiquidEmptyAlertsState(isDark: Boolean) {
+    LiquidGlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         cornerRadius = 26.dp,
-        backgroundColor = PorcelainWhite,
-        borderColor = Color.White,
-        elevation = 8.dp
+        elevation = 10.dp,
+        isDark = isDark,
+        glowColor = LiquidNeonGreen.copy(alpha = 0.2f)
     ) {
         Column(
-            modifier = Modifier.padding(28.dp),
+            modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(60.dp)
+                    .size(64.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Brush.linearGradient(listOf(GlowingMint, NeonCyanAccent))),
+                    .background(Brush.linearGradient(listOf(LiquidNeonGreen, LiquidNeonCyan))),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(34.dp)
                 )
             }
 
@@ -295,17 +316,17 @@ private fun ClayEmptyAlertsState() {
 
             Text(
                 text = "All Systems Safe",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                color = CosmicNavyDark
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isDark) Color.White else TextPrimary
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "No safety violations or geofence breaches detected. Wearable telemetry is normal.",
+                text = "No safety violations or geofence breaches detected. Wearable telemetry is secure.",
                 fontSize = 12.sp,
-                color = TextSecondary,
+                color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 lineHeight = 16.sp
             )

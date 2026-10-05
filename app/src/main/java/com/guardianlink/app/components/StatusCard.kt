@@ -1,26 +1,24 @@
 package com.guardianlink.app.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.guardianlink.app.ui.theme.*
 
 @Composable
 fun StatusCard(
@@ -31,42 +29,41 @@ fun StatusCard(
     accentColor: Color,
     onClick: (() -> Unit)? = null
 ) {
-    val clickableModifier = if (onClick != null) {
-        modifier.clickable { onClick() }
-    } else {
-        modifier
-    }
+    val isDark = isSystemInDarkTheme()
 
-    Card(
-        modifier = clickableModifier,
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    LiquidGlassCard(
+        modifier = modifier,
+        cornerRadius = 22.dp,
+        elevation = 8.dp,
+        isDark = isDark,
+        glowColor = accentColor.copy(alpha = 0.2f),
+        onClick = onClick
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Icon pill badge
+                // Jelly Icon Badge
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(accentColor.copy(alpha = 0.12f)),
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(accentColor, accentColor.copy(alpha = 0.75f))
+                            )
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
-                        tint = accentColor,
-                        modifier = Modifier.size(20.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -75,16 +72,16 @@ fun StatusCard(
                     "Battery" -> {
                         val percent = value.replace("%", "").trim().toIntOrNull() ?: 80
                         val barColor = when {
-                            percent > 50 -> Color(0xFF22C55E)
-                            percent > 20 -> Color(0xFFF59E0B)
-                            else -> Color(0xFFEF4444)
+                            percent > 50 -> LiquidNeonGreen
+                            percent > 20 -> LiquidSunsetAmber
+                            else -> LiquidRubyEmergency
                         }
                         Box(
                             modifier = Modifier
-                                .width(34.dp)
+                                .width(36.dp)
                                 .height(6.dp)
                                 .clip(CircleShape)
-                                .background(Color.Gray.copy(alpha = 0.2f))
+                                .background(Color.White.copy(alpha = 0.15f))
                         ) {
                             Box(
                                 modifier = Modifier
@@ -98,41 +95,41 @@ fun StatusCard(
                     "GPS" -> {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(accentColor.copy(alpha = 0.1f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LiquidNeonCyan.copy(alpha = 0.15f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = "LIVE",
-                                color = accentColor,
+                                color = LiquidNeonCyan,
                                 fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
                     "Network" -> {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(accentColor.copy(alpha = 0.1f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LiquidNeonPurple.copy(alpha = 0.15f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "FAST",
-                                color = accentColor,
+                                text = "4G LTE",
+                                color = LiquidNeonPurple,
                                 fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -141,9 +138,9 @@ fun StatusCard(
 
             Text(
                 text = value,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
                 fontSize = 18.sp,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (isDark) Color.White else TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

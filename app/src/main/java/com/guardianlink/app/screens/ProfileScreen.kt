@@ -4,9 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,8 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
-import com.guardianlink.app.components.ClaySquircle
-import com.guardianlink.app.components.FluidWaveCanvas
+import com.guardianlink.app.components.*
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.util.AuthPreference
 import com.guardianlink.app.viewmodel.UserViewModel
@@ -49,6 +47,7 @@ fun ProfileScreen(
     val context = LocalContext.current
     val viewModel: UserViewModel = viewModel()
     val profile by viewModel.profile.collectAsState()
+    val isDark = isDarkMode
 
     var showPairDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
@@ -58,200 +57,190 @@ fun ProfileScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            val savedPath = copyImageToInternalStorage(context, uri)
-            if (savedPath != null) {
-                viewModel.saveProfilePhoto(savedPath)
+            val localPath = copyImageToInternalStorage(context, uri)
+            if (localPath != null) {
+                viewModel.updateProfile(profile.copy(photoLocalPath = localPath))
             }
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Dual-tone fluid wave background
-        FluidWaveCanvas(
-            topColor = CosmicNavyDark,
-            bottomColor = ClayCanvasLight,
-            waveYRatio = 0.30f
-        )
+        // Liquid Glass Ambient Caustic Canvas
+        LiquidGlassCanvas(isDark = isDark)
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 20.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(bottom = 110.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Luminous 3D Avatar Squircle
-            ClaySquircle(
+            // Luminous 3D Glass Avatar Lens
+            Box(
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(108.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(LiquidGradientPrimary))
                     .clickable {
                         photoPicker.launch(
                             androidx.activity.result.PickVisualMediaRequest(
                                 ActivityResultContracts.PickVisualMedia.ImageOnly
                             )
                         )
-                    },
-                cornerRadius = 28.dp,
-                backgroundColor = CosmicIndigoSurface,
-                borderColor = ElectricBlueAccent.copy(alpha = 0.6f),
-                elevation = 12.dp
+                    }
+                    .padding(3.dp),
+                contentAlignment = Alignment.Center
             ) {
-                if (profile.photoLocalPath.isNotEmpty()) {
-                    AsyncImage(
-                        model = File(profile.photoLocalPath),
-                        contentDescription = "Profile photo",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Brush.linearGradient(listOf(ElectricBlueAccent, PastelPurple))),
-                        contentAlignment = Alignment.Center
-                    ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(if (isDark) LiquidSurfaceDark else LiquidSurfaceLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (profile.photoLocalPath.isNotEmpty()) {
+                        AsyncImage(
+                            model = File(profile.photoLocalPath),
+                            contentDescription = "Profile photo",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
                         Icon(
                             imageVector = Icons.Default.Person,
                             contentDescription = "Default avatar",
-                            tint = Color.White,
-                            modifier = Modifier.size(50.dp)
+                            tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                            modifier = Modifier.size(54.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = profile.name.ifBlank { "Harshit" },
-                color = Color.White,
-                fontSize = 24.sp,
+                color = if (isDark) Color.White else TextPrimary,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.ExtraBold
             )
 
             Text(
-                text = "Tap photo to customize",
-                color = Color.White.copy(alpha = 0.7f),
+                text = "Tap photo to customize avatar",
+                color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
                 fontSize = 12.sp
             )
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Profile Details Clay Card
-            ClaySquircle(
+            // Profile Details Liquid Glass Card
+            LiquidGlassCard(
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 24.dp,
-                backgroundColor = PorcelainWhite,
-                borderColor = Color.White,
-                elevation = 6.dp
+                elevation = 8.dp,
+                isDark = isDark,
+                glowColor = LiquidNeonCyan.copy(alpha = 0.18f)
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "Guardian Profile",
-                        fontSize = 16.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CosmicNavyDark
+                        color = if (isDark) Color.White else TextPrimary
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    ProfileDetailRow(icon = Icons.Default.Badge, label = "Full Name", value = profile.name.ifBlank { "Harshit" })
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ProfileDetailRow(icon = Icons.Default.Phone, label = "Phone", value = profile.phoneNumber.ifBlank { "+91 99999 99999" })
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ProfileDetailRow(icon = Icons.Default.Devices, label = "Paired Device", value = profile.deviceId.ifBlank { "demo_device" })
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ProfileDetailRow(icon = Icons.Default.Security, label = "Emergency Role", value = "Primary Guardian")
+                    LiquidProfileDetailRow(icon = Icons.Default.Badge, label = "Full Name", value = profile.name.ifBlank { "Harshit" }, isDark = isDark)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LiquidProfileDetailRow(icon = Icons.Default.Phone, label = "Phone", value = profile.phoneNumber.ifBlank { "+91 99999 99999" }, isDark = isDark)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LiquidProfileDetailRow(icon = Icons.Default.Devices, label = "Paired Device", value = profile.deviceId.ifBlank { "demo_device" }, isDark = isDark)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LiquidProfileDetailRow(icon = Icons.Default.Security, label = "Emergency Role", value = "Primary Guardian", isDark = isDark)
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Dark Mode Clay Tile
-            ClaySquircle(
+            // Dark Mode Liquid Glass Card with Liquid Switch
+            LiquidGlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 20.dp,
-                backgroundColor = PorcelainWhite,
-                borderColor = Color.White,
-                elevation = 5.dp
+                cornerRadius = 22.dp,
+                elevation = 6.dp,
+                isDark = isDark
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(PastelPurple.copy(alpha = 0.15f)),
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Brush.linearGradient(LiquidGradientMagenta)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.DarkMode, contentDescription = null, tint = PastelPurple, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.DarkMode, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "Dark Mode",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = CosmicNavyDark
-                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(
+                                text = "Dark Theme",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = if (isDark) Color.White else TextPrimary
+                            )
+                            Text(
+                                text = if (isDark) "Liquid Obsidian" else "Liquid Crystal",
+                                fontSize = 11.sp,
+                                color = if (isDark) Color.White.copy(alpha = 0.6f) else TextSecondary
+                            )
+                        }
                     }
 
-                    Switch(
+                    LiquidGlassSwitch(
                         checked = isDarkMode,
                         onCheckedChange = { onToggleTheme() },
-                        colors = SwitchDefaults.colors(checkedThumbColor = ElectricBlueAccent)
+                        isDark = isDark
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // Pair Wearable Device Button
-            Button(
+            // Pair Wearable Device Liquid Pill Button
+            LiquidPillButton(
+                text = if (profile.deviceId.isEmpty()) "Pair Wearable Device" else "Change Device ID (${profile.deviceId})",
+                icon = Icons.Default.Sync,
                 onClick = {
                     newDeviceId = profile.deviceId
                     showPairDialog = true
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlueAccent)
-            ) {
-                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (profile.deviceId.isEmpty()) "Pair Wearable Device" else "Change Device ID (${profile.deviceId})",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+                variant = LiquidButtonVariant.PRIMARY,
+                modifier = Modifier.fillMaxWidth(),
+                height = 52.dp
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Log Out Button
-            OutlinedButton(
+            // Log Out Liquid Pill Button
+            LiquidPillButton(
+                text = "Log Out",
+                icon = Icons.AutoMirrored.Filled.ExitToApp,
                 onClick = { showLogoutDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralEmergency),
-                border = BorderStroke(1.dp, CoralEmergency.copy(alpha = 0.4f))
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Log Out", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
+                variant = LiquidButtonVariant.EMERGENCY,
+                modifier = Modifier.fillMaxWidth(),
+                height = 52.dp
+            )
 
-            Spacer(modifier = Modifier.height(90.dp))
+            Spacer(modifier = Modifier.height(100.dp))
         }
     }
 
@@ -259,11 +248,23 @@ fun ProfileScreen(
     if (showPairDialog) {
         AlertDialog(
             onDismissRequest = { showPairDialog = false },
-            title = { Text("Pair Wearable Device", fontWeight = FontWeight.Bold, color = CosmicNavyDark) },
+            containerColor = if (isDark) LiquidSurfaceDark else LiquidSurfaceLight,
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Text(
+                    "Pair Wearable Device",
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else TextPrimary
+                )
+            },
             text = {
                 Column {
-                    Text("Enter the unique hardware ID printed on your ESP32 tracker:", fontSize = 13.sp, color = TextSecondary)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Enter the unique hardware ID printed on your ESP32 tracker:",
+                        fontSize = 13.sp,
+                        color = if (isDark) Color.White.copy(alpha = 0.7f) else TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
                     OutlinedTextField(
                         value = newDeviceId,
                         onValueChange = { newDeviceId = it },
@@ -276,7 +277,8 @@ fun ProfileScreen(
                 }
             },
             confirmButton = {
-                Button(
+                LiquidPillButton(
+                    text = "Save",
                     onClick = {
                         if (newDeviceId.isNotBlank()) {
                             val updatedProfile = profile.copy(deviceId = newDeviceId.trim())
@@ -284,15 +286,17 @@ fun ProfileScreen(
                         }
                         showPairDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlueAccent)
-                ) {
-                    Text("Save")
-                }
+                    variant = LiquidButtonVariant.PRIMARY,
+                    height = 44.dp
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showPairDialog = false }) {
-                    Text("Cancel")
-                }
+                LiquidPillButton(
+                    text = "Cancel",
+                    onClick = { showPairDialog = false },
+                    variant = LiquidButtonVariant.FROSTED,
+                    height = 44.dp
+                )
             }
         )
     }
@@ -301,10 +305,24 @@ fun ProfileScreen(
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Log Out", fontWeight = FontWeight.Bold, color = CosmicNavyDark) },
-            text = { Text("Are you sure you want to log out of GuardianLink?", color = TextSecondary) },
+            containerColor = if (isDark) LiquidSurfaceDark else LiquidSurfaceLight,
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Text(
+                    "Log Out",
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    "Are you sure you want to log out of GuardianLink?",
+                    color = if (isDark) Color.White.copy(alpha = 0.75f) else TextSecondary
+                )
+            },
             confirmButton = {
-                Button(
+                LiquidPillButton(
+                    text = "Log Out",
                     onClick = {
                         showLogoutDialog = false
                         FirebaseAuth.getInstance().signOut()
@@ -313,25 +331,28 @@ fun ProfileScreen(
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CoralEmergency)
-                ) {
-                    Text("Log Out")
-                }
+                    variant = LiquidButtonVariant.EMERGENCY,
+                    height = 44.dp
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel")
-                }
+                LiquidPillButton(
+                    text = "Cancel",
+                    onClick = { showLogoutDialog = false },
+                    variant = LiquidButtonVariant.FROSTED,
+                    height = 44.dp
+                )
             }
         )
     }
 }
 
 @Composable
-private fun ProfileDetailRow(
+private fun LiquidProfileDetailRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    value: String
+    value: String,
+    isDark: Boolean
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -339,17 +360,31 @@ private fun ProfileDetailRow(
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(ElectricBlueAccent.copy(alpha = 0.10f)),
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LiquidNeonCyan.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = ElectricBlueAccent, modifier = Modifier.size(18.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                modifier = Modifier.size(20.dp)
+            )
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Column {
-            Text(text = label, fontSize = 11.sp, color = TextSecondary)
-            Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = CosmicNavyDark)
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                color = if (isDark) Color.White.copy(alpha = 0.6f) else TextSecondary
+            )
+            Text(
+                text = value,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isDark) Color.White else TextPrimary
+            )
         }
     }
 }
