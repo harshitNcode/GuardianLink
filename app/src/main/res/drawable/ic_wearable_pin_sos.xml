@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Outer SOS alert pulse glow -->
+    <path
+        android:fillColor="#33EF4444"
+        android:pathData="M24,24m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+    <!-- Mid glow circle -->
+    <path
+        android:fillColor="#66EF4444"
+        android:pathData="M24,24m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+    <!-- Solid SOS beacon pin head -->
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M24,24m-9,0a9,9 0,1 1,18 0a9,9 0,1 1,-18 0" />
+    <!-- White inner border -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:pathData="M24,24m-9,0a9,9 0,1 1,18 0a9,9 0,1 1,-18 0" />
+    <!-- Center white core dot -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,24m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+</vector>

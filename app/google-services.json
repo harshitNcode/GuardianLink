@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "437826711945",
+    "firebase_url": "https://guardianlink-f81b2-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "guardianlink-f81b2",
+    "storage_bucket": "guardianlink-f81b2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:437826711945:android:c47bd6956f2e9eb916b158",
+        "android_client_info": {
+          "package_name": "com.guardianlink.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "437826711945-mm2pv7degp4nk94ot5ts4f3b4og34e1v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB71DXztCG0Rz_uV-Tpk5cXo9y0r2QA5lA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "437826711945-mm2pv7degp4nk94ot5ts4f3b4og34e1v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,16 @@
+# Render.com 1-Click Free Deployment Specification
+services:
+  - type: web
+    name: guardianlink-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ENVIRONMENT
+        value: production
+      # Connect your free Neon.tech or Supabase PostgreSQL database URL:
+      - key: DATABASE_URL
+        sync: false
