@@ -511,7 +511,7 @@ private fun ClayModuleTile(
     onClick: (() -> Unit)? = null
 ) {
     ClaySquircle(
-        modifier = modifier.height(100.dp),
+        modifier = modifier.height(116.dp), // Increased from 100.dp so text never clips
         cornerRadius = 22.dp,
         backgroundColor = PorcelainWhite,
         borderColor = Color.White,
@@ -521,7 +521,7 @@ private fun ClayModuleTile(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
+                .padding(12.dp), // Optimized padding
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
@@ -547,6 +547,7 @@ private fun ClayModuleTile(
                     color = CosmicNavyDark,
                     maxLines = 1
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     fontSize = 11.sp,
