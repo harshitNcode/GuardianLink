@@ -164,7 +164,7 @@ fun DashboardScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Status: ${status.device.ifBlank { "Online" }} • ${status.network.ifBlank { "4G LTE" }}",
+                                        text = "Status: ${status.device.ifBlank { "Online" }} • ${status.network.ifBlank { "Wi-Fi" }}",
                                         color = if (isDark) Color.White.copy(alpha = 0.7f) else TextSecondary,
                                         fontSize = 12.sp
                                     )
@@ -306,14 +306,14 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Row 2: 4G LTE Network & Safe Zones
+                    // Row 2: Wi-Fi Network & Safe Zones
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         LiquidGlassTile(
                             modifier = Modifier.weight(1f),
-                            icon = Icons.Default.CellTower,
+                            icon = Icons.Default.Wifi,
                             iconGradient = listOf(LiquidNeonPurple, LiquidNeonViolet),
                             title = "Network",
                             subtitle = status.network,

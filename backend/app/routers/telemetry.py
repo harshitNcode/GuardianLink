@@ -49,7 +49,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             last_latitude=payload.latitude,
             last_longitude=payload.longitude,
             battery=payload.battery or "100%",
-            network=payload.network or "4G LTE",
+            network=payload.network or "Wi-Fi",
             sos=payload.sos or False,
             updated_at=datetime.datetime.utcnow()
         )
@@ -71,7 +71,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         latitude=payload.latitude,
         longitude=payload.longitude,
         battery=payload.battery or "100%",
-        network=payload.network or "4G LTE",
+        network=payload.network or "Wi-Fi",
         sos=payload.sos or False,
         timestamp=datetime.datetime.utcnow()
     )

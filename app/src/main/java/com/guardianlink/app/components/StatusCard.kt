@@ -115,7 +115,7 @@ fun StatusCard(
                                 .padding(horizontal = 7.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "4G LTE",
+                                text = "Wi-Fi",
                                 color = LiquidNeonPurple,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold

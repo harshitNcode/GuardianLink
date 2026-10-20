@@ -3,7 +3,7 @@ package com.guardianlink.app.model
 data class DeviceStatus(
     val battery: String = "92%",
     val gps: String = "28.6139, 77.2090",
-    val network: String = "4G LTE",
+    val network: String = "Wi-Fi",
     val device: String = "Online",
     val sos: Boolean = false,
     val rawLatitude: Double? = null,

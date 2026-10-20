@@ -102,7 +102,7 @@ class DeviceRepository {
         return DeviceStatus(
             battery = obj.optString("battery", "92%"),
             gps = gpsVal,
-            network = obj.optString("network", "4G LTE"),
+            network = obj.optString("network", "Wi-Fi"),
             device = obj.optString("status", "Online"),
             sos = obj.optBoolean("sos", false),
             rawLatitude = lat,

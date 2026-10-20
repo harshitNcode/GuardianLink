@@ -13,7 +13,7 @@ class Device(Base):
     last_latitude = Column(Float, nullable=True)
     last_longitude = Column(Float, nullable=True)
     battery = Column(String(16), default="100%")
-    network = Column(String(32), default="4G LTE")
+    network = Column(String(32), default="Wi-Fi")
     sos = Column(Boolean, default=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -28,7 +28,7 @@ class TelemetryLog(Base):
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     battery = Column(String(16), default="100%")
-    network = Column(String(32), default="4G LTE")
+    network = Column(String(32), default="Wi-Fi")
     sos = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 

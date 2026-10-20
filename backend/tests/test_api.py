@@ -53,7 +53,7 @@ def test_telemetry_ingestion(client):
         "latitude": 12.971598,
         "longitude": 77.594562,
         "battery": "92%",
-        "network": "4G LTE",
+        "network": "Wi-Fi",
         "sos": False
     }
     response = client.post("/api/v1/telemetry", json=payload)
@@ -94,7 +94,7 @@ def test_geofencing_safe_and_breach(client):
         "latitude": 12.9718,
         "longitude": 77.5948,
         "battery": "90%",
-        "network": "4G LTE",
+        "network": "Wi-Fi",
         "sos": False
     }
     res_inside = client.post("/api/v1/telemetry", json=inside_payload)
@@ -114,7 +114,7 @@ def test_geofencing_safe_and_breach(client):
         "latitude": 13.0500,
         "longitude": 77.6500,
         "battery": "88%",
-        "network": "4G LTE",
+        "network": "Wi-Fi",
         "sos": False
     }
     res_outside = client.post("/api/v1/telemetry", json=outside_payload)

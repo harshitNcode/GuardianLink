@@ -53,7 +53,7 @@ def startup_seed_demo_device():
                 last_latitude=28.6139,
                 last_longitude=77.2090,
                 battery="92%",
-                network="4G LTE",
+                network="Wi-Fi",
                 sos=False,
                 updated_at=datetime.datetime.utcnow()
             )

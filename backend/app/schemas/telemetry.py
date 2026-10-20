@@ -8,7 +8,7 @@ class TelemetryCreate(BaseModel):
     latitude: float = Field(12.9716, example=12.9716, ge=-90.0, le=90.0)
     longitude: float = Field(77.5946, example=77.5946, ge=-180.0, le=180.0)
     battery: Optional[str] = "95%"
-    network: Optional[str] = "4G LTE"
+    network: Optional[str] = "Wi-Fi"
     sos: Optional[bool] = False
 
 

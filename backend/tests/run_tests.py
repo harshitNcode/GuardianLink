@@ -61,7 +61,7 @@ def run_all_tests():
             "latitude": 12.971598,
             "longitude": 77.594562,
             "battery": "95%",
-            "network": "4G LTE",
+            "network": "Wi-Fi",
             "sos": False
         }
         r = client.post("/api/v1/telemetry", json=payload)
@@ -121,7 +121,7 @@ def run_all_tests():
             "latitude": 13.0500,
             "longitude": 77.6500,
             "battery": "90%",
-            "network": "4G LTE",
+            "network": "Wi-Fi",
             "sos": False
         }
         r = client.post("/api/v1/telemetry", json=payload)
@@ -200,8 +200,12 @@ def run_all_tests():
     # Cleanup test db
     client.close()
     Base.metadata.drop_all(bind=engine)
-    if os.path.exists("./test_guardianlink.db"):
-        os.remove("./test_guardianlink.db")
+    engine.dispose()
+    try:
+        if os.path.exists("./test_guardianlink.db"):
+            os.remove("./test_guardianlink.db")
+    except Exception:
+        pass
 
     print("\n==================================================")
     print(f"Results: {passed}/{total} tests passed (100% success)")
