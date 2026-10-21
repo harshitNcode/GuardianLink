@@ -248,6 +248,486 @@ fun DashboardScreen(
                 }
             }
 
+            // Biometric Health Vitals Section (ESP32 Live Sensors)
+
+            item {
+
+                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+
+                    Row(
+
+                        modifier = Modifier.fillMaxWidth(),
+
+                        horizontalArrangement = Arrangement.SpaceBetween,
+
+                        verticalAlignment = Alignment.CenterVertically
+
+                    ) {
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+
+                            Text(
+
+                                text = "Biometric Vitals",
+
+                                fontSize = 18.sp,
+
+                                fontWeight = FontWeight.Bold,
+
+                                color = if (isDark) Color.White else TextPrimary
+
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Box(
+
+                                modifier = Modifier
+
+                                    .size(8.dp)
+
+                                    .clip(CircleShape)
+
+                                    .background(LiquidNeonGreen)
+
+                            )
+
+                        }
+
+
+
+                        Surface(
+
+                            shape = CircleShape,
+
+                            color = LiquidNeonPink.copy(alpha = 0.15f),
+
+                            border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonPink.copy(alpha = 0.35f))
+
+                        ) {
+
+                            Text(
+
+                                text = "ESP32 LIVE",
+
+                                color = if (isDark) LiquidNeonPink else LiquidRubyEmergency,
+
+                                fontSize = 10.sp,
+
+                                fontWeight = FontWeight.ExtraBold,
+
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+
+                            )
+
+                        }
+
+                    }
+
+
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+
+
+                    // Dual Vitals Cards: Heart Rate & Temperature
+
+                    Row(
+
+                        modifier = Modifier.fillMaxWidth(),
+
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+
+                    ) {
+
+                        // Heart Rate Monitor
+
+                        LiquidGlassCard(
+
+                            modifier = Modifier.weight(1f),
+
+                            cornerRadius = 24.dp,
+
+                            isDark = isDark,
+
+                            glowColor = LiquidRubyEmergency.copy(alpha = 0.25f)
+
+                        ) {
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+
+                                Row(
+
+                                    modifier = Modifier.fillMaxWidth(),
+
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+
+                                    verticalAlignment = Alignment.CenterVertically
+
+                                ) {
+
+                                    Box(
+
+                                        modifier = Modifier
+
+                                            .size(42.dp)
+
+                                            .clip(RoundedCornerShape(13.dp))
+
+                                            .background(
+
+                                                Brush.linearGradient(
+
+                                                    listOf(LiquidRubyEmergency, LiquidNeonPink)
+
+                                                )
+
+                                            ),
+
+                                        contentAlignment = Alignment.Center
+
+                                    ) {
+
+                                        Icon(
+
+                                            imageVector = Icons.Default.Favorite,
+
+                                            contentDescription = "Heart Rate",
+
+                                            tint = Color.White,
+
+                                            modifier = Modifier.size(22.dp)
+
+                                        )
+
+                                    }
+
+
+
+                                    Surface(
+
+                                        shape = CircleShape,
+
+                                        color = when {
+
+                                            status.heartRate > 120 -> LiquidRubyEmergency.copy(alpha = 0.2f)
+
+                                            status.heartRate < 55 -> LiquidSunsetAmber.copy(alpha = 0.2f)
+
+                                            else -> LiquidNeonGreen.copy(alpha = 0.15f)
+
+                                        }
+
+                                    ) {
+
+                                        Text(
+
+                                            text = status.heartRateStatus,
+
+                                            color = when {
+
+                                                status.heartRate > 120 -> LiquidRubyEmergency
+
+                                                status.heartRate < 55 -> LiquidSunsetAmber
+
+                                                else -> LiquidNeonGreen
+
+                                            },
+
+                                            fontSize = 9.sp,
+
+                                            fontWeight = FontWeight.Bold,
+
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+
+                                        )
+
+                                    }
+
+                                }
+
+
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+
+
+                                Text(
+
+                                    text = "Heart Rate",
+
+                                    fontSize = 12.sp,
+
+                                    fontWeight = FontWeight.Medium,
+
+                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+
+                                )
+
+
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+
+
+                                Row(verticalAlignment = Alignment.Bottom) {
+
+                                    Text(
+
+                                        text = "${status.heartRate}",
+
+                                        fontSize = 26.sp,
+
+                                        fontWeight = FontWeight.ExtraBold,
+
+                                        color = if (isDark) Color.White else TextPrimary
+
+                                    )
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                    Text(
+
+                                        text = "BPM",
+
+                                        fontSize = 12.sp,
+
+                                        fontWeight = FontWeight.SemiBold,
+
+                                        color = LiquidNeonPink,
+
+                                        modifier = Modifier.padding(bottom = 4.dp)
+
+                                    )
+
+                                }
+
+
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+
+
+                                Text(
+
+                                    text = "Target: 60-100 BPM",
+
+                                    fontSize = 10.sp,
+
+                                    color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary
+
+                                )
+
+                            }
+
+                        }
+
+
+
+                        // Body Temperature Monitor
+
+                        LiquidGlassCard(
+
+                            modifier = Modifier.weight(1f),
+
+                            cornerRadius = 24.dp,
+
+                            isDark = isDark,
+
+                            glowColor = LiquidSunsetAmber.copy(alpha = 0.25f)
+
+                        ) {
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+
+                                Row(
+
+                                    modifier = Modifier.fillMaxWidth(),
+
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+
+                                    verticalAlignment = Alignment.CenterVertically
+
+                                ) {
+
+                                    Box(
+
+                                        modifier = Modifier
+
+                                            .size(42.dp)
+
+                                            .clip(RoundedCornerShape(13.dp))
+
+                                            .background(
+
+                                                Brush.linearGradient(
+
+                                                    listOf(LiquidSunsetAmber, LiquidHoneyGold)
+
+                                                )
+
+                                            ),
+
+                                        contentAlignment = Alignment.Center
+
+                                    ) {
+
+                                        Icon(
+
+                                            imageVector = Icons.Default.Thermostat,
+
+                                            contentDescription = "Temperature",
+
+                                            tint = Color.White,
+
+                                            modifier = Modifier.size(22.dp)
+
+                                        )
+
+                                    }
+
+
+
+                                    Surface(
+
+                                        shape = CircleShape,
+
+                                        color = when {
+
+                                            status.temperature >= 38.0f -> LiquidRubyEmergency.copy(alpha = 0.2f)
+
+                                            status.temperature >= 37.5f -> LiquidSunsetAmber.copy(alpha = 0.2f)
+
+                                            else -> LiquidNeonGreen.copy(alpha = 0.15f)
+
+                                        }
+
+                                    ) {
+
+                                        Text(
+
+                                            text = status.temperatureStatus,
+
+                                            color = when {
+
+                                                status.temperature >= 38.0f -> LiquidRubyEmergency
+
+                                                status.temperature >= 37.5f -> LiquidSunsetAmber
+
+                                                else -> LiquidNeonGreen
+
+                                            },
+
+                                            fontSize = 9.sp,
+
+                                            fontWeight = FontWeight.Bold,
+
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+
+                                        )
+
+                                    }
+
+                                }
+
+
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+
+
+                                Text(
+
+                                    text = "Body Temp",
+
+                                    fontSize = 12.sp,
+
+                                    fontWeight = FontWeight.Medium,
+
+                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+
+                                )
+
+
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+
+
+                                Row(verticalAlignment = Alignment.Bottom) {
+
+                                    Text(
+
+                                        text = "%.1f".format(status.temperature),
+
+                                        fontSize = 26.sp,
+
+                                        fontWeight = FontWeight.ExtraBold,
+
+                                        color = if (isDark) Color.White else TextPrimary
+
+                                    )
+
+                                    Spacer(modifier = Modifier.width(3.dp))
+
+                                    Text(
+
+                                        text = "°C",
+
+                                        fontSize = 13.sp,
+
+                                        fontWeight = FontWeight.SemiBold,
+
+                                        color = LiquidSunsetAmber,
+
+                                        modifier = Modifier.padding(bottom = 4.dp)
+
+                                    )
+
+                                    Spacer(modifier = Modifier.width(6.dp))
+
+                                    Text(
+
+                                        text = "(${status.displayTemperatureFahrenheit})",
+
+                                        fontSize = 10.sp,
+
+                                        color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary,
+
+                                        modifier = Modifier.padding(bottom = 4.dp)
+
+                                    )
+
+                                }
+
+
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+
+
+                                Text(
+
+                                    text = "Normal: 36.5°C - 37.2°C",
+
+                                    fontSize = 10.sp,
+
+                                    color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary
+
+                                )
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+
+
             // System Modules Section (6 Liquid Glass Tiles in 3x2 Grid)
             item {
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -268,7 +748,7 @@ fun DashboardScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonCyan.copy(alpha = 0.3f))
                         ) {
                             Text(
-                                text = "6 ACTIVE",
+                                text = "8 ACTIVE",
                                 color = if (isDark) LiquidNeonCyan else PrimaryBlue,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -356,6 +836,32 @@ fun DashboardScreen(
                             subtitle = "${alerts.size} incidents",
                             isDark = isDark,
                             onClick = { navigateToTab("alerts") }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Row 4: Biometrics (Heart Rate & Temperature)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        LiquidGlassTile(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.Favorite,
+                            iconGradient = listOf(LiquidRubyEmergency, LiquidNeonPink),
+                            title = "Heart Rate",
+                            subtitle = status.displayHeartRate,
+                            isDark = isDark
+                        )
+
+                        LiquidGlassTile(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.Thermostat,
+                            iconGradient = listOf(LiquidSunsetAmber, LiquidHoneyGold),
+                            title = "Body Temp",
+                            subtitle = status.displayTemperature,
+                            isDark = isDark
                         )
                     }
                 }

@@ -22,6 +22,8 @@ def format_device_status(device: Device) -> dict:
         "battery": device.battery,
         "network": device.network,
         "sos": device.sos,
+        "heart_rate": device.heart_rate if device.heart_rate is not None else 72,
+        "temperature": device.temperature if device.temperature is not None else 36.6,
         "latitude": device.last_latitude,
         "longitude": device.last_longitude,
         "gps": gps_str,
@@ -51,36 +53,48 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             battery=payload.battery or "100%",
             network=payload.network or "Wi-Fi",
             sos=payload.sos or False,
+            heart_rate=payload.heart_rate if payload.heart_rate is not None else 72,
+            temperature=payload.temperature if payload.temperature is not None else 36.6,
             updated_at=datetime.datetime.utcnow()
         )
         db.add(device)
     else:
-        device.last_latitude = payload.latitude
-        device.last_longitude = payload.longitude
+        if payload.latitude is not None and payload.longitude is not None:
+            device.last_latitude = payload.latitude
+            device.last_longitude = payload.longitude
         if payload.battery:
             device.battery = payload.battery
         if payload.network:
             device.network = payload.network
+        if payload.heart_rate is not None:
+            device.heart_rate = payload.heart_rate
+        if payload.temperature is not None:
+            device.temperature = payload.temperature
         device.sos = payload.sos or False
         device.status = "Alert" if payload.sos else "Online"
         device.updated_at = datetime.datetime.utcnow()
 
     # 2. Add history log
+    current_lat = payload.latitude if payload.latitude is not None else (device.last_latitude or 0.0)
+    current_lon = payload.longitude if payload.longitude is not None else (device.last_longitude or 0.0)
     log = TelemetryLog(
         device_id=target_device_id,
-        latitude=payload.latitude,
-        longitude=payload.longitude,
+        latitude=current_lat,
+        longitude=current_lon,
         battery=payload.battery or "100%",
         network=payload.network or "Wi-Fi",
         sos=payload.sos or False,
+        heart_rate=payload.heart_rate,
+        temperature=payload.temperature,
         timestamp=datetime.datetime.utcnow()
     )
     db.add(log)
     db.commit()
     db.refresh(device)
 
-    # 3. Server-side Geofence Evaluation
-    geofence_results = evaluate_geofences(db, target_device_id, payload.latitude, payload.longitude)
+    # 3. Server-side Geofence Evaluation (evaluated only when valid coordinates exist)
+    if current_lat != 0.0 and current_lon != 0.0:
+        geofence_results = evaluate_geofences(db, target_device_id, current_lat, current_lon)
     for result in geofence_results:
         if not result.is_inside:
             # Geofence breach detected!
@@ -123,6 +137,32 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             latitude=payload.latitude,
             longitude=payload.longitude
         )
+
+    # 4b. Health vitals alert (Heart rate or Temperature anomaly)
+    if payload.heart_rate and (payload.heart_rate > 135 or payload.heart_rate < 45):
+        health_alert = Alert(
+            user_id="default_user",
+            device_id=target_device_id,
+            title=f"Abnormal Heart Rate Detected: {payload.heart_rate} BPM",
+            time=datetime.datetime.now().strftime("%I:%M %p"),
+            type="warning",
+            latitude=payload.latitude,
+            longitude=payload.longitude
+        )
+        db.add(health_alert)
+        db.commit()
+    elif payload.temperature and payload.temperature >= 38.8:
+        temp_alert = Alert(
+            user_id="default_user",
+            device_id=target_device_id,
+            title=f"High Body Temperature Detected: {payload.temperature:.1f}°C",
+            time=datetime.datetime.now().strftime("%I:%M %p"),
+            type="warning",
+            latitude=payload.latitude,
+            longitude=payload.longitude
+        )
+        db.add(temp_alert)
+        db.commit()
 
     # 5. Broadcast to connected WebSocket clients (Android app)
     status_dict = format_device_status(device)

@@ -5,11 +5,13 @@ from pydantic import BaseModel, Field
 
 class TelemetryCreate(BaseModel):
     device_id: str = Field("demo_device", example="demo_device", description="Unique hardware identifier for the ESP32 wearable")
-    latitude: float = Field(12.9716, example=12.9716, ge=-90.0, le=90.0)
-    longitude: float = Field(77.5946, example=77.5946, ge=-180.0, le=180.0)
+    latitude: Optional[float] = Field(None, example=12.9716, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(None, example=77.5946, ge=-180.0, le=180.0)
     battery: Optional[str] = "95%"
     network: Optional[str] = "Wi-Fi"
     sos: Optional[bool] = False
+    heart_rate: Optional[int] = Field(72, example=72, description="Heart rate in BPM")
+    temperature: Optional[float] = Field(36.6, example=36.6, description="Body temperature in Celsius")
 
 
 class TelemetryResponse(BaseModel):
@@ -20,6 +22,8 @@ class TelemetryResponse(BaseModel):
     battery: str
     network: str
     sos: bool
+    heart_rate: Optional[int] = None
+    temperature: Optional[float] = None
     timestamp: datetime
 
     class Config:
@@ -33,6 +37,8 @@ class DeviceStatusResponse(BaseModel):
     battery: str
     network: str
     sos: bool
+    heart_rate: Optional[int] = 72
+    temperature: Optional[float] = 36.6
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     gps: str  # Format: "12.9716, 77.5946" compatible with Android DeviceStatus

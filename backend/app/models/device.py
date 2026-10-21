@@ -15,6 +15,8 @@ class Device(Base):
     battery = Column(String(16), default="100%")
     network = Column(String(32), default="Wi-Fi")
     sos = Column(Boolean, default=False)
+    heart_rate = Column(Integer, default=72)
+    temperature = Column(Float, default=36.6)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     telemetry_logs = relationship("TelemetryLog", back_populates="device", cascade="all, delete-orphan")
@@ -30,6 +32,8 @@ class TelemetryLog(Base):
     battery = Column(String(16), default="100%")
     network = Column(String(32), default="Wi-Fi")
     sos = Column(Boolean, default=False)
+    heart_rate = Column(Integer, nullable=True)
+    temperature = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     device = relationship("Device", back_populates="telemetry_logs")

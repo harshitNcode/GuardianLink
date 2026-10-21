@@ -13,6 +13,12 @@ class DeviceRepository {
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // No timeout for persistent WebSocket
+        .addInterceptor { chain ->
+            val request = chain.request().newBuilder()
+                .addHeader("Bypass-Tunnel-Reminder", "true")
+                .build()
+            chain.proceed(request)
+        }
         .build()
 
     private var activeWebSocket: WebSocket? = null
@@ -32,6 +38,7 @@ class DeviceRepository {
     private fun fetchLatestStatus(deviceId: String, onUpdate: (DeviceStatus) -> Unit) {
         val request = Request.Builder()
             .url("${ApiConfig.HTTP_BASE_URL}/api/v1/telemetry/$deviceId/latest")
+            .addHeader("Bypass-Tunnel-Reminder", "true")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -60,7 +67,10 @@ class DeviceRepository {
         if (!isListening) return
 
         val wsUrl = "${ApiConfig.WS_BASE_URL}/ws/devices/$deviceId"
-        val request = Request.Builder().url(wsUrl).build()
+        val request = Request.Builder()
+            .url(wsUrl)
+            .addHeader("Bypass-Tunnel-Reminder", "true")
+            .build()
 
         activeWebSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -98,6 +108,8 @@ class DeviceRepository {
         val lat = if (obj.has("latitude") && !obj.isNull("latitude")) obj.optDouble("latitude") else null
         val lon = if (obj.has("longitude") && !obj.isNull("longitude")) obj.optDouble("longitude") else null
         val gpsVal = if (lat != null && lon != null) "$lat, $lon" else obj.optString("gps", "28.6139, 77.2090")
+        val bpm = if (obj.has("heart_rate")) obj.optInt("heart_rate", 74) else obj.optInt("heartRate", 74)
+        val temp = if (obj.has("temperature")) obj.optDouble("temperature", 36.6).toFloat() else 36.6f
 
         return DeviceStatus(
             battery = obj.optString("battery", "92%"),
@@ -105,6 +117,8 @@ class DeviceRepository {
             network = obj.optString("network", "Wi-Fi"),
             device = obj.optString("status", "Online"),
             sos = obj.optBoolean("sos", false),
+            heartRate = bpm,
+            temperature = temp,
             rawLatitude = lat,
             rawLongitude = lon
         )

@@ -122,6 +122,36 @@ fun StatusCard(
                             )
                         }
                     }
+                    "Heart Rate" -> {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LiquidRubyEmergency.copy(alpha = 0.15f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "BPM",
+                                color = LiquidRubyEmergency,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                    "Temperature" -> {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LiquidSunsetAmber.copy(alpha = 0.15f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "BODY",
+                                color = LiquidSunsetAmber,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
                 }
             }
 
