@@ -171,7 +171,8 @@ fun AppNavigation(
                 contentAlignment = Alignment.Center
             ) {
                 val dockShape = RoundedCornerShape(32.dp)
-                val dockBg = if (isDarkMode) Color(0xEE11172A) else Color(0xF2FFFFFF)
+                val dockIsDark = !isDarkMode
+                val dockBg = if (dockIsDark) Color(0xF20F172A) else Color(0xF2FFFFFF)
 
                 Box(
                     modifier = Modifier
@@ -185,7 +186,7 @@ fun AppNavigation(
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = if (isDarkMode) 0.25f else 0.65f),
+                                    Color.White.copy(alpha = if (dockIsDark) 0.25f else 0.65f),
                                     Color.White.copy(alpha = 0.04f),
                                     Color.Transparent
                                 ),
@@ -198,9 +199,9 @@ fun AppNavigation(
                         drawRoundRect(
                             brush = Brush.linearGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = if (isDarkMode) 0.60f else 0.95f),
+                                    Color.White.copy(alpha = if (dockIsDark) 0.60f else 0.95f),
                                     Color.White.copy(alpha = 0.15f),
-                                    if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.35f) else LiquidPrismaticCyan.copy(alpha = 0.35f)
+                                    if (dockIsDark) LiquidNeonCyan.copy(alpha = 0.35f) else LiquidPrismaticCyan.copy(alpha = 0.35f)
                                 )
                             ),
                             size = size,
@@ -224,7 +225,7 @@ fun AppNavigation(
                             LiquidDockItem(
                                 item = item,
                                 selected = selected,
-                                isDark = isDarkMode,
+                                isDark = dockIsDark,
                                 onClick = {
                                     if (currentDestination != item.route) {
                                         if (item.route == "dashboard") {
@@ -277,15 +278,10 @@ private fun LiquidDockItem(
             .then(
                 if (selected) {
                     Modifier
-                        .shadow(
-                            6.dp,
-                            pillShape,
-                            ambientColor = if (isDark) LiquidNeonCyan.copy(alpha = 0.4f) else LiquidNeonPurple.copy(alpha = 0.35f)
-                        )
                         .background(
                             Brush.linearGradient(
-                                if (isDark) listOf(Color(0xFF2B3A68), Color(0xFF1D2644))
-                                else listOf(Color(0xFF8B5CF6), Color(0xFF7C3AED)) // Primary jelly pill in light mode!
+                                if (isDark) listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9))
+                                else listOf(Color(0xFF7C3AED), Color(0xFF5B21B6))
                             )
                         )
                 } else Modifier
@@ -314,7 +310,7 @@ private fun LiquidDockItem(
                 imageVector = item.icon,
                 contentDescription = item.title,
                 tint = if (selected) {
-                    if (isDark) LiquidNeonCyan else Color.White
+                    Color.White
                 } else {
                     // High-contrast unselected icon (easily visible over any map or background!)
                     if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF334155)
@@ -329,7 +325,7 @@ private fun LiquidDockItem(
                 fontSize = 10.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                 color = if (selected) {
-                    if (isDark) LiquidNeonCyan else Color.White
+                    Color.White
                 } else {
                     if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF334155)
                 }
