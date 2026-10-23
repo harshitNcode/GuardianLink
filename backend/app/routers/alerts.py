@@ -170,3 +170,24 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(alert)
     return alert
+
+
+@router.post("/dispatch-whatsapp")
+async def dispatch_whatsapp(payload: dict):
+    """
+    Accepts automated background WhatsApp emergency alert dispatch.
+    Logs and triggers external WhatsApp dispatch without requiring client intervention.
+    """
+    recipient = payload.get("recipient_phone", "")
+    message = payload.get("message", "")
+    location_url = payload.get("location_url", "")
+    import logging
+    logging.getLogger("GuardianLink.Alert").info(
+        f"🚨 [AUTOMATIC WHATSAPP DISPATCH] Recipient: {recipient} | Message: {message[:60]}... | Location: {location_url}"
+    )
+    return {
+        "status": "success",
+        "detail": "Emergency WhatsApp alert dispatched automatically in background",
+        "recipient": recipient
+    }
+

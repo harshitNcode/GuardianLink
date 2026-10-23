@@ -12,6 +12,8 @@ object AuthPreference {
     private const val KEY_EMAIL = "email"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_EMERGENCY_CONTACT = "emergency_contact"
+    private const val KEY_CALLMEBOT_KEY = "callmebot_key"
+    private const val KEY_SERVER_HOST = "server_host"
 
     fun isLoggedIn(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -22,7 +24,7 @@ object AuthPreference {
         context: Context,
         isLoggedIn: Boolean,
         uid: String = "demo_user",
-        name: String = "Harshit",
+        name: String = "YourName",
         phone: String = "",
         email: String = ""
     ) {
@@ -43,7 +45,7 @@ object AuthPreference {
 
     fun getName(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_NAME, "Harshit") ?: "Harshit"
+        return prefs.getString(KEY_NAME, "YourName") ?: "YourName"
     }
 
     fun getPhone(context: Context): String {
@@ -84,6 +86,28 @@ object AuthPreference {
     fun setEmergencyContact(context: Context, contact: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_EMERGENCY_CONTACT, contact).apply()
+    }
+
+    fun getCallMeBotKey(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_CALLMEBOT_KEY, "") ?: ""
+    }
+
+    fun setCallMeBotKey(context: Context, key: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_CALLMEBOT_KEY, key.trim()).apply()
+    }
+
+    fun getServerHost(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_SERVER_HOST, "172.18.112.25:8000") ?: "172.18.112.25:8000"
+    }
+
+    fun setServerHost(context: Context, host: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cleanHost = host.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
+        prefs.edit().putString(KEY_SERVER_HOST, cleanHost).apply()
+        com.guardianlink.app.data.ApiConfig.HOST = cleanHost
     }
 
     fun clear(context: Context) {

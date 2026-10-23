@@ -36,7 +36,7 @@ class UserRepository {
                             val obj = JSONObject(body)
                             val profile = UserProfile(
                                 uid = obj.optString("uid", uid),
-                                name = obj.optString("name", "Harshit"),
+                                name = obj.optString("name", "YourName"),
                                 phoneNumber = obj.optString("phone_number", ""),
                                 deviceId = obj.optString("device_id", "demo_device"),
                                 emergencyContact = obj.optString("emergency_contact", ""),

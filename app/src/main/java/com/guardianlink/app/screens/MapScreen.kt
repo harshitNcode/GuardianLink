@@ -59,9 +59,12 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.util.BoundingBox
 import android.graphics.Point
 import android.view.MotionEvent
 import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.max
 
 // High-Resolution Satellite & Aerial Tile Source
 private val GoogleSatelliteHybridTileSource = object : OnlineTileSourceBase(
@@ -118,20 +121,67 @@ fun MapScreen(
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var deviceMarkerRef by remember { mutableStateOf<Marker?>(null) }
 
+    // User Location & Distance Path States
+    var showMyLocation by rememberSaveable { mutableStateOf(false) }
+    var showDistanceLine by rememberSaveable { mutableStateOf(false) }
+    var myLocationPoint by remember { mutableStateOf<GeoPoint?>(null) }
+    var myLocationMarkerRef by remember { mutableStateOf<Marker?>(null) }
+    var distanceLineRef by remember { mutableStateOf<Polyline?>(null) }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                       permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
+            showMyLocation = true
             val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             val loc = try {
                 lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                     ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
             } catch (_: SecurityException) { null }
             if (loc != null) {
+                myLocationPoint = GeoPoint(loc.latitude, loc.longitude)
                 mapViewRef?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
-                android.widget.Toast.makeText(context, "Centered on your location", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "My Location enabled", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Real-time phone location listener when "My Location" is active
+    DisposableEffect(showMyLocation) {
+        if (!showMyLocation) {
+            onDispose { }
+        } else {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val locListener = object : LocationListener {
+                override fun onLocationChanged(loc: Location) {
+                    myLocationPoint = GeoPoint(loc.latitude, loc.longitude)
+                }
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+            }
+
+            try {
+                val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                if (hasFine || hasCoarse) {
+                    val lastKnown = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                        ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    if (lastKnown != null) {
+                        myLocationPoint = GeoPoint(lastKnown.latitude, lastKnown.longitude)
+                    }
+                    lm?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 1f, locListener)
+                    lm?.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2000L, 1f, locListener)
+                }
+            } catch (_: SecurityException) {}
+
+            onDispose {
+                try {
+                    lm?.removeUpdates(locListener)
+                } catch (_: Exception) {}
             }
         }
     }
@@ -201,10 +251,114 @@ fun MapScreen(
         mapView.invalidate()
     }
 
+    fun fitBothLocations(mapView: MapView) {
+        val myLoc = myLocationPoint ?: return
+        val devLat = status.latitude ?: return
+        val devLng = status.longitude ?: return
+        val devLoc = GeoPoint(devLat, devLng)
+
+        val minLat = min(myLoc.latitude, devLoc.latitude)
+        val maxLat = max(myLoc.latitude, devLoc.latitude)
+        val minLng = min(myLoc.longitude, devLoc.longitude)
+        val maxLng = max(myLoc.longitude, devLoc.longitude)
+
+        val latPad = max((maxLat - minLat) * 0.35, 0.003)
+        val lngPad = max((maxLng - minLng) * 0.35, 0.003)
+
+        val boundingBox = BoundingBox(
+            maxLat + latPad,
+            maxLng + lngPad,
+            minLat - latPad,
+            minLng - lngPad
+        )
+        mapView.zoomToBoundingBox(boundingBox, true)
+    }
+
+    fun refreshLocationAndDistanceOverlays(mapView: MapView) {
+        // 1. My Location (Phone) Marker
+        if (showMyLocation && myLocationPoint != null) {
+            val phoneDrawable = ContextCompat.getDrawable(context, R.drawable.ic_my_location_pin)
+            val currentPos = myLocationPoint!!
+            if (myLocationMarkerRef == null) {
+                val marker = Marker(mapView).apply {
+                    position = currentPos
+                    title = "My Location (This Phone)"
+                    snippet = "%.4f° N, %.4f° E".format(currentPos.latitude, currentPos.longitude)
+                    icon = phoneDrawable
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                }
+                myLocationMarkerRef = marker
+                mapView.overlays.add(marker)
+            } else {
+                myLocationMarkerRef?.apply {
+                    position = currentPos
+                    snippet = "%.4f° N, %.4f° E".format(currentPos.latitude, currentPos.longitude)
+                    icon = phoneDrawable
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                }
+                if (!mapView.overlays.contains(myLocationMarkerRef)) {
+                    mapView.overlays.add(myLocationMarkerRef)
+                }
+            }
+        } else {
+            myLocationMarkerRef?.let { mapView.overlays.remove(it) }
+            myLocationMarkerRef = null
+        }
+
+        // 2. Distance Polyline connecting My Location & Connected Device Location
+        val devLat = status.latitude
+        val devLng = status.longitude
+        val hasDeviceLoc = devLat != null && devLng != null && devLat != 0.0 && devLng != 0.0
+        val devicePoint = if (hasDeviceLoc) GeoPoint(devLat!!, devLng!!) else null
+
+        if (showDistanceLine && showMyLocation && myLocationPoint != null && devicePoint != null) {
+            val distM = myLocationPoint!!.distanceToAsDouble(devicePoint)
+            val distText = if (distM >= 1000) "%.2f km".format(distM / 1000) else "${distM.toInt()} m"
+
+            if (distanceLineRef == null) {
+                val line = Polyline(mapView).apply {
+                    setPoints(listOf(myLocationPoint!!, devicePoint))
+                    outlinePaint.color = android.graphics.Color.rgb(0, 229, 255) // Electric Cyan
+                    outlinePaint.strokeWidth = 7f
+                    title = "Distance: $distText"
+                }
+                distanceLineRef = line
+                mapView.overlays.add(line)
+            } else {
+                distanceLineRef?.apply {
+                    setPoints(listOf(myLocationPoint!!, devicePoint))
+                    outlinePaint.color = android.graphics.Color.rgb(0, 229, 255)
+                    outlinePaint.strokeWidth = 7f
+                    title = "Distance: $distText"
+                }
+                if (!mapView.overlays.contains(distanceLineRef)) {
+                    mapView.overlays.add(distanceLineRef)
+                }
+            }
+        } else {
+            distanceLineRef?.let { mapView.overlays.remove(it) }
+            distanceLineRef = null
+        }
+
+        // Ensure markers stay above lines
+        if (deviceMarkerRef != null && !mapView.overlays.contains(deviceMarkerRef)) {
+            mapView.overlays.add(deviceMarkerRef)
+        }
+        if (myLocationMarkerRef != null && !mapView.overlays.contains(myLocationMarkerRef)) {
+            mapView.overlays.add(myLocationMarkerRef)
+        }
+
+        mapView.invalidate()
+    }
+
     // Function to rebuild and render all geofence polygons and draft shapes on map
     fun updateMapOverlays(mapView: MapView) {
         // Remove old polygons & polylines & draft markers, keep base overlays
-        mapView.overlays.removeAll { it is Polygon || it is Polyline || (it is Marker && it != deviceMarkerRef) }
+        mapView.overlays.removeAll {
+            (it is Polygon && it != draftPolygonRef) ||
+            (it is Polyline && it != draftPolylineRef && it != distanceLineRef) ||
+            (it is Marker && it != deviceMarkerRef && it != myLocationMarkerRef && !draftVertexMarkers.contains(it) && it != draftCenterMarker)
+        }
         draftVertexMarkers.clear()
         draftPolygonRef = null
         draftPolylineRef = null
@@ -374,6 +528,9 @@ fun MapScreen(
             mapView.overlays.add(deviceMarkerRef)
         }
 
+        // Refresh My Location and Distance line
+        refreshLocationAndDistanceOverlays(mapView)
+
         mapView.invalidate()
     }
 
@@ -387,7 +544,10 @@ fun MapScreen(
         geofenceViewModel.isDrawingMode,
         geofenceViewModel.draftPoints.size,
         geofenceViewModel.circleRadiusMeters,
-        geofenceViewModel.geofences.size
+        geofenceViewModel.geofences.size,
+        showMyLocation,
+        showDistanceLine,
+        myLocationPoint
     ) {
         val lat = status.latitude
         val lng = status.longitude
@@ -720,6 +880,300 @@ fun MapScreen(
                 }
             }
 
+            // Top Controls Bar: Map Options (Styles, My Location & Distance in vertical)
+            AnimatedVisibility(visible = !geofenceViewModel.isDrawingMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Map Options Button & Dropdown (styled like the map changing option with vertical list)
+                    Box {
+                        Surface(
+                            onClick = { showLayerMenu = !showLayerMenu },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDarkMode) LiquidGlassBgDark else LiquidGlassBgLight,
+                            border = BorderStroke(1.dp, if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.10f)),
+                            shadowElevation = 0.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Layers,
+                                    contentDescription = "Map Options",
+                                    tint = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Map Options",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDarkMode) Color.White else TextPrimary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = if (showLayerMenu) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = if (isDarkMode) Color.White.copy(alpha = 0.7f) else TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showLayerMenu,
+                            onDismissRequest = { showLayerMenu = false }
+                        ) {
+                            // Section 1: Map View Layers (Satellite, Topographic, Standard) in vertical
+                            MapStyle.values().forEach { style ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = style.title,
+                                            fontWeight = if (selectedStyle == style) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 13.sp
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedStyle = style
+                                        MapPreference.setMapStyle(context, style.name)
+                                        showLayerMenu = false
+                                    },
+                                    leadingIcon = {
+                                        if (selectedStyle == style) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = PrimaryBlue
+                                            )
+                                        } else {
+                                            Spacer(modifier = Modifier.size(24.dp))
+                                        }
+                                    }
+                                )
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            // Section 2: Location & Distance Tools in vertical with other options
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = "My Location",
+                                            fontWeight = if (showMyLocation) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = if (showMyLocation) "Phone GPS Active" else "Show phone on map",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    val willEnable = !showMyLocation
+                                    if (willEnable) {
+                                        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                        if (hasFine || hasCoarse) {
+                                            showMyLocation = true
+                                            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                                            val phoneLoc = try {
+                                                lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                                                    ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                                            } catch (_: SecurityException) { null }
+                                            if (phoneLoc != null) {
+                                                myLocationPoint = GeoPoint(phoneLoc.latitude, phoneLoc.longitude)
+                                                mapViewRef?.controller?.animateTo(myLocationPoint!!)
+                                            }
+                                            mapViewRef?.let { refreshLocationAndDistanceOverlays(it) }
+                                        } else {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        }
+                                    } else {
+                                        showMyLocation = false
+                                        showDistanceLine = false
+                                        myLocationPoint = null
+                                        mapViewRef?.let { refreshLocationAndDistanceOverlays(it) }
+                                    }
+                                    showLayerMenu = false
+                                },
+                                leadingIcon = {
+                                    if (showMyLocation) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = EmeraldGreen
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.MyLocation,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = "Distance Line",
+                                            fontWeight = if (showDistanceLine) FontWeight.Bold else FontWeight.Normal,
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = if (showDistanceLine) "Connecting Path Active" else "Measure Phone ↔ Device line",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    val willEnable = !showDistanceLine
+                                    if (willEnable) {
+                                        if (!showMyLocation) {
+                                            val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                            val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                            if (hasFine || hasCoarse) {
+                                                showMyLocation = true
+                                                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                                                val phoneLoc = try {
+                                                    lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                                                        ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                                                } catch (_: SecurityException) { null }
+                                                if (phoneLoc != null) {
+                                                    myLocationPoint = GeoPoint(phoneLoc.latitude, phoneLoc.longitude)
+                                                }
+                                            } else {
+                                                locationPermissionLauncher.launch(
+                                                    arrayOf(
+                                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                                    )
+                                                )
+                                            }
+                                        }
+                                        showDistanceLine = true
+                                        mapViewRef?.let {
+                                            refreshLocationAndDistanceOverlays(it)
+                                            fitBothLocations(it)
+                                        }
+                                    } else {
+                                        showDistanceLine = false
+                                        mapViewRef?.let { refreshLocationAndDistanceOverlays(it) }
+                                    }
+                                    showLayerMenu = false
+                                },
+                                leadingIcon = {
+                                    if (showDistanceLine) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = LiquidNeonCyan
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Straighten,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    // Active Readout Pill: Distance Line or My GPS Active
+                    if (showDistanceLine) {
+                        val devLat = status.latitude
+                        val devLng = status.longitude
+                        val hasDevice = devLat != null && devLng != null && devLat != 0.0 && devLng != 0.0
+                        val myLoc = myLocationPoint
+
+                        if (myLoc != null && hasDevice) {
+                            val distM = myLoc.distanceToAsDouble(GeoPoint(devLat!!, devLng!!))
+                            val formatted = if (distM >= 1000) "%.2f km".format(distM / 1000) else "${distM.toInt()} m"
+
+                            Surface(
+                                onClick = { mapViewRef?.let { fitBothLocations(it) } },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.18f) else PrimaryBlue.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.4f) else PrimaryBlue.copy(alpha = 0.25f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Route,
+                                        contentDescription = null,
+                                        tint = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "📏 $formatted",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDarkMode) LiquidNeonCyan else PrimaryBlue
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "• Fit",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isDarkMode) Color.White.copy(alpha = 0.8f) else TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    } else if (showMyLocation) {
+                        Surface(
+                            onClick = {
+                                myLocationPoint?.let { pt ->
+                                    mapViewRef?.controller?.animateTo(pt)
+                                }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDarkMode) LiquidNeonGreen.copy(alpha = 0.18f) else EmeraldGreen.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, if (isDarkMode) LiquidNeonGreen.copy(alpha = 0.4f) else EmeraldGreen.copy(alpha = 0.25f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MyLocation,
+                                    contentDescription = null,
+                                    tint = if (isDarkMode) LiquidNeonGreen else EmeraldGreen,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "My GPS Active",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDarkMode) LiquidNeonGreen else EmeraldGreen
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Animated SOS Warning Banner
             AnimatedVisibility(
                 visible = status.sos,
@@ -791,7 +1245,7 @@ fun MapScreen(
             }
         }
 
-        // Right Floating Controls Stack (Layer Switcher, Zoom +, Zoom -, Recenter) - Zero shadow
+        // Right Floating Controls Stack (Zoom +, Zoom -, Recenter) - Zero shadow
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -799,52 +1253,6 @@ fun MapScreen(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Layer Switcher Button & Dropdown
-            Box {
-                LiquidGlassCircleButton(
-                    onClick = { showLayerMenu = !showLayerMenu },
-                    size = 46.dp,
-                    isDark = isDarkMode
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Layers,
-                        contentDescription = "Change Map Style",
-                        tint = if (isDarkMode) Color.White else PrimaryBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showLayerMenu,
-                    onDismissRequest = { showLayerMenu = false }
-                ) {
-                    MapStyle.values().forEach { style ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = style.title,
-                                    fontWeight = if (selectedStyle == style) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            onClick = {
-                                selectedStyle = style
-                                MapPreference.setMapStyle(context, style.name)
-                                showLayerMenu = false
-                            },
-                            leadingIcon = {
-                                if (selectedStyle == style) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = PrimaryBlue
-                                    )
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
             // Zoom In (+)
             LiquidGlassCircleButton(
                 onClick = { mapViewRef?.controller?.zoomIn() },
@@ -880,6 +1288,7 @@ fun MapScreen(
                     val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
                     if (hasFine || hasCoarse) {
+                        showMyLocation = true
                         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
                         val phoneLoc = try {
                             lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
@@ -887,7 +1296,11 @@ fun MapScreen(
                         } catch (_: SecurityException) { null }
 
                         if (phoneLoc != null) {
-                            mapViewRef?.controller?.animateTo(GeoPoint(phoneLoc.latitude, phoneLoc.longitude))
+                            myLocationPoint = GeoPoint(phoneLoc.latitude, phoneLoc.longitude)
+                            mapViewRef?.let {
+                                refreshLocationAndDistanceOverlays(it)
+                                it.controller.animateTo(myLocationPoint!!)
+                            }
                             android.widget.Toast.makeText(context, "Centered on your location", android.widget.Toast.LENGTH_SHORT).show()
                         } else if (status.hasValidLocation) {
                             mapViewRef?.controller?.animateTo(GeoPoint(status.latitude!!, status.longitude!!))

@@ -21,7 +21,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         private val _sharedProfile = MutableStateFlow(
             UserProfile(
                 uid = "demo_user",
-                name = "Harshit",
+                name = "YourName",
                 phoneNumber = "",
                 deviceId = "demo_device",
                 emergencyContact = ""
@@ -33,7 +33,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         // Sync local storage on creation
-        if (_sharedProfile.value.name.isBlank() || _sharedProfile.value.name == "Harshit") {
+        if (_sharedProfile.value.name.isBlank() || _sharedProfile.value.name == "YourName") {
             _sharedProfile.value = _sharedProfile.value.copy(
                 uid = currentUid,
                 name = AuthPreference.getName(application),

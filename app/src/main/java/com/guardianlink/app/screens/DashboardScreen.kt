@@ -1,5 +1,6 @@
 package com.guardianlink.app.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -29,12 +30,21 @@ import com.guardianlink.app.viewmodel.DeviceViewModel
 import com.guardianlink.app.viewmodel.UserViewModel
 import java.util.Calendar
 
+data class SearchSectionResult(
+    val title: String,
+    val description: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val iconTint: Color,
+    val keywords: List<String>,
+    val onSelect: () -> Unit
+)
+
 @Composable
 fun DashboardScreen(
     navController: NavController? = null,
     isDarkMode: Boolean = isSystemInDarkTheme()
 ) {
-    val alertViewModel = remember { AlertViewModel() }
+    val alertViewModel: AlertViewModel = viewModel()
     val deviceViewModel = remember { DeviceViewModel() }
     val userViewModel: UserViewModel = viewModel()
     val userProfile by userViewModel.profile.collectAsState()
@@ -50,6 +60,36 @@ fun DashboardScreen(
     var showSosConfirmDialog by remember { mutableStateOf(false) }
     var showSosCancelDialog by remember { mutableStateOf(false) }
     var sosTargetPhone by remember { mutableStateOf(userProfile.emergencyContact.ifBlank { com.guardianlink.app.util.AuthPreference.getEmergencyContact(context) }) }
+
+    // Dynamic System Modules state calculation
+    val isBatteryActive = remember(status.battery) {
+        val pct = status.battery.filter { it.isDigit() }.toIntOrNull() ?: 0
+        status.battery.isNotBlank() && status.battery != "--" && pct > 0
+    }
+    val isGpsActive = remember(status.hasValidLocation, status.gps) {
+        status.hasValidLocation || (status.gps.isNotBlank() && status.gps != "--" && !status.gps.contains("Searching", ignoreCase = true) && !status.gps.contains("No GPS", ignoreCase = true))
+    }
+    val isNetworkActive = remember(status.network) {
+        status.network.isNotBlank() && status.network != "--" && !status.network.equals("Offline", ignoreCase = true) && !status.network.equals("Disconnected", ignoreCase = true)
+    }
+    val safeZonesList: List<com.guardianlink.app.model.GeofenceZone> = remember(status) {
+        com.guardianlink.app.data.GeofenceLocalStore.loadZones(context, userProfile.deviceId.ifBlank { "demo_device" })
+    }
+    val isSafeZonesActive = safeZonesList.isNotEmpty()
+
+    val contactsList = remember(userProfile.emergencyContact) {
+        com.guardianlink.app.data.ContactLocalStore.loadContacts(context)
+    }
+    val isGuardiansActive = userProfile.emergencyContact.isNotBlank() || contactsList.isNotEmpty()
+
+    val isAlertsActive = status.device.equals("Online", ignoreCase = true) || alerts.isNotEmpty()
+
+    val activeModulesCount = (if (isBatteryActive) 1 else 0) +
+            (if (isGpsActive) 1 else 0) +
+            (if (isNetworkActive) 1 else 0) +
+            (if (isSafeZonesActive) 1 else 0) +
+            (if (isGuardiansActive) 1 else 0) +
+            (if (isAlertsActive) 1 else 0)
 
     LaunchedEffect(userProfile.emergencyContact) {
         if (userProfile.emergencyContact.isNotBlank()) {
@@ -89,6 +129,169 @@ fun DashboardScreen(
         }
     }
 
+    val allSearchableSections = remember(safeZonesList, contactsList) {
+        val list = mutableListOf<SearchSectionResult>()
+
+        // 1. Settings
+        list.add(
+            SearchSectionResult(
+                title = "Settings",
+                description = "Edit profile details, phone GPS sharing, paired device & theme",
+                icon = Icons.Default.Settings,
+                iconTint = PrimaryBlue,
+                keywords = listOf("setting", "settings", "profile setting", "config", "preferences", "edit profile"),
+                onSelect = {
+                    com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings = true
+                    navigateToTab("profile")
+                }
+            )
+        )
+
+        // 2. Safe Zones
+        list.add(
+            SearchSectionResult(
+                title = "Safe Zones & Geofencing",
+                description = "Configure circular, rectangular and custom safe perimeters",
+                icon = Icons.Default.Security,
+                iconTint = LiquidSunsetAmber,
+                keywords = listOf("safe", "zone", "zones", "safezone", "safezones", "geofence", "geofencing", "perimeter", "boundary", "radius"),
+                onSelect = { navigateToTab("map") }
+            )
+        )
+
+        // Saved Safe Zones
+        for (zone in safeZonesList) {
+            list.add(
+                SearchSectionResult(
+                    title = "Safe Zone: ${zone.name}",
+                    description = "${zone.shapeType} Safe Zone on Live Map",
+                    icon = Icons.Default.Shield,
+                    iconTint = LiquidNeonGreen,
+                    keywords = listOf(zone.name.lowercase(), "zone", "safe"),
+                    onSelect = { navigateToTab("map") }
+                )
+            )
+        }
+
+        // 3. Live Map & GPS Tracker
+        list.add(
+            SearchSectionResult(
+                title = "Live Map Tracker",
+                description = "Real-time wearable tracking with Satellite & Street view",
+                icon = Icons.Default.LocationOn,
+                iconTint = LiquidNeonCyan,
+                keywords = listOf("map", "gps", "tracker", "tracking", "location", "satellite", "street", "live location", "where"),
+                onSelect = { navigateToTab("map") }
+            )
+        )
+
+        // 4. Share Phone GPS
+        list.add(
+            SearchSectionResult(
+                title = "Share This Phone's GPS",
+                description = "Broadcast phone GPS for live wearable tracking",
+                icon = Icons.Default.Sensors,
+                iconTint = LiquidNeonGreen,
+                keywords = listOf("share", "share gps", "phone gps", "broadcast", "transmit", "beacon"),
+                onSelect = {
+                    com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings = true
+                    navigateToTab("profile")
+                }
+            )
+        )
+
+        // 5. Emergency Contacts & Guardians
+        list.add(
+            SearchSectionResult(
+                title = "Emergency Contacts",
+                description = "Manage guardians & SOS emergency phone numbers",
+                icon = Icons.Default.ContactPhone,
+                iconTint = LiquidNeonPink,
+                keywords = listOf("contact", "contacts", "guardian", "guardians", "emergency contact", "phone", "number", "whatsapp", "call"),
+                onSelect = { navigateToTab("contacts") }
+            )
+        )
+
+        // Saved Contacts
+        for (c in contactsList) {
+            list.add(
+                SearchSectionResult(
+                    title = "Contact: ${c.name}",
+                    description = "Phone: ${c.phone} (SOS Recipient)",
+                    icon = Icons.Default.Phone,
+                    iconTint = LiquidNeonPink,
+                    keywords = listOf(c.name.lowercase(), c.phone, "contact"),
+                    onSelect = { navigateToTab("contacts") }
+                )
+            )
+        }
+
+        // 6. Incident Alerts
+        list.add(
+            SearchSectionResult(
+                title = "Incident Alerts & History",
+                description = "Review SOS alarms, perimeter breaches & system telemetry logs",
+                icon = Icons.Default.NotificationsActive,
+                iconTint = LiquidRubyEmergency,
+                keywords = listOf("alert", "alerts", "incident", "incidents", "sos", "notification", "notifications", "alarm", "emergency", "danger", "breach", "history"),
+                onSelect = { navigateToTab("alerts") }
+            )
+        )
+
+        // 7. Profile
+        list.add(
+            SearchSectionResult(
+                title = "Profile",
+                description = "View Guardian details, avatar photo & device pairing",
+                icon = Icons.Default.Person,
+                iconTint = LiquidNeonCyan,
+                keywords = listOf("profile", "account", "user", "name", "avatar", "photo", "yourname"),
+                onSelect = { navigateToTab("profile") }
+            )
+        )
+
+        // 8. Dark Theme & Appearance
+        list.add(
+            SearchSectionResult(
+                title = "Theme & Appearance",
+                description = "Switch between Liquid Obsidian and Crystal themes",
+                icon = Icons.Default.DarkMode,
+                iconTint = LiquidNeonPurple,
+                keywords = listOf("theme", "dark", "light", "mode", "color", "appearance", "dark mode", "dark theme"),
+                onSelect = {
+                    com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings = true
+                    navigateToTab("profile")
+                }
+            )
+        )
+
+        // 9. Battery & Device Telemetry
+        list.add(
+            SearchSectionResult(
+                title = "Wearable Battery & Telemetry",
+                description = "ESP32 battery level, network connection & live vitals",
+                icon = Icons.Default.BatteryChargingFull,
+                iconTint = LiquidNeonGreen,
+                keywords = listOf("battery", "device", "wearable", "esp32", "power", "charge", "vitals", "status"),
+                onSelect = { navigateToTab("map") }
+            )
+        )
+
+        list
+    }
+
+    val matchedSearchResults = remember(searchQuery, allSearchableSections) {
+        if (searchQuery.isBlank()) emptyList()
+        else {
+            val q = searchQuery.trim().lowercase()
+            allSearchableSections.filter { item ->
+                item.title.lowercase().contains(q) ||
+                item.description.lowercase().contains(q) ||
+                item.keywords.any { it.contains(q) || q.contains(it) }
+            }.take(5)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Ambient Caustic Liquid Glass Canvas
         LiquidGlassCanvas(isDark = isDark)
@@ -104,7 +307,7 @@ fun DashboardScreen(
             // Top Status Island Notch
             item {
                 LiquidGlassTopNotch(
-                    userName = userProfile.name.ifBlank { "Harshit" },
+                    userName = userProfile.name.ifBlank { "YourName" },
                     isOnline = status.device.contains("Online", ignoreCase = true) && !status.isDisconnected,
                     isDark = isDark,
                     isRefreshing = isRefreshing,
@@ -128,7 +331,7 @@ fun DashboardScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = userProfile.name.ifBlank { "Harshit" },
+                        text = userProfile.name.ifBlank { "YourName" },
                         color = if (isDark) Color.White else TextPrimary,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -137,14 +340,109 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Liquid Glass Search Capsule (matching Image 1 & 2)
+                    // Liquid Glass Search Capsule
                     LiquidGlassSearchBar(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
-                        placeholder = "Search projects or safe zones...",
+                        placeholder = "Search safe zones...",
                         isDark = isDark,
-                        onAddClick = { navigateToTab("map") }
+                        onAddClick = { navigateToTab("map") },
+                        onSearch = {
+                            if (matchedSearchResults.isNotEmpty()) {
+                                matchedSearchResults.first().onSelect()
+                                searchQuery = ""
+                            }
+                        }
                     )
+
+                    // Interactive Search Results Dropdown
+                    AnimatedVisibility(visible = searchQuery.isNotBlank()) {
+                        LiquidGlassCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                            cornerRadius = 18.dp,
+                            elevation = 8.dp,
+                            isDark = isDark
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                if (matchedSearchResults.isEmpty()) {
+                                    Text(
+                                        text = "No sections found matching \"$searchQuery\"",
+                                        color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        text = "QUICK NAVIGATION (${matchedSearchResults.size})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        color = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    matchedSearchResults.forEachIndexed { index, result ->
+                                        if (index > 0) {
+                                            HorizontalDivider(
+                                                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f),
+                                                modifier = Modifier.padding(vertical = 4.dp)
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    result.onSelect()
+                                                    searchQuery = ""
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(result.iconTint.copy(alpha = 0.16f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = result.icon,
+                                                    contentDescription = null,
+                                                    tint = result.iconTint,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = result.title,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = if (isDark) Color.White else TextPrimary
+                                                )
+                                                Text(
+                                                    text = result.description,
+                                                    fontSize = 11.sp,
+                                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                                contentDescription = "Go",
+                                                tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -699,12 +997,15 @@ fun DashboardScreen(
                         )
                         Surface(
                             shape = CircleShape,
-                            color = LiquidNeonCyan.copy(alpha = 0.15f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonCyan.copy(alpha = 0.3f))
+                            color = if (activeModulesCount > 0) LiquidNeonCyan.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (activeModulesCount > 0) LiquidNeonCyan.copy(alpha = 0.3f) else Color.Gray.copy(alpha = 0.3f)
+                            )
                         ) {
                             Text(
-                                text = "6 ACTIVE",
-                                color = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                                text = "$activeModulesCount ACTIVE",
+                                color = if (activeModulesCount > 0) (if (isDark) LiquidNeonCyan else PrimaryBlue) else (if (isDark) Color.LightGray else Color.Gray),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
@@ -724,7 +1025,7 @@ fun DashboardScreen(
                             icon = Icons.Default.BatteryChargingFull,
                             iconGradient = listOf(LiquidNeonGreen, LiquidNeonCyan),
                             title = "Battery",
-                            subtitle = status.battery,
+                            subtitle = if (isBatteryActive) status.battery else "Offline",
                             isDark = isDark
                         )
 
@@ -733,7 +1034,7 @@ fun DashboardScreen(
                             icon = Icons.Default.GpsFixed,
                             iconGradient = listOf(LiquidNeonCyan, PrimaryBlue),
                             title = "GPS Tracker",
-                            subtitle = status.gps,
+                            subtitle = if (isGpsActive) (if (status.hasValidLocation) "GPS Locked" else status.gps) else "No GPS Fix",
                             isDark = isDark,
                             onClick = { navigateToTab("map") }
                         )
@@ -751,7 +1052,7 @@ fun DashboardScreen(
                             icon = Icons.Default.Wifi,
                             iconGradient = listOf(LiquidNeonPurple, LiquidNeonViolet),
                             title = "Network",
-                            subtitle = status.network,
+                            subtitle = if (isNetworkActive) status.network else "Disconnected",
                             isDark = isDark
                         )
 
@@ -760,7 +1061,7 @@ fun DashboardScreen(
                             icon = Icons.Default.Security,
                             iconGradient = listOf(LiquidSunsetAmber, LiquidHoneyGold),
                             title = "Safe Zones",
-                            subtitle = "Geofencing",
+                            subtitle = if (safeZonesList.isNotEmpty()) "${safeZonesList.size} Active" else "0 Defined",
                             isDark = isDark,
                             onClick = { navigateToTab("map") }
                         )
@@ -778,7 +1079,7 @@ fun DashboardScreen(
                             icon = Icons.Default.ContactPhone,
                             iconGradient = listOf(LiquidNeonPink, LiquidNeonMagenta),
                             title = "Guardians",
-                            subtitle = "Contacts",
+                            subtitle = if (contactsList.isNotEmpty()) "${contactsList.size} Saved" else if (userProfile.emergencyContact.isNotBlank()) "1 Saved" else "0 Saved",
                             isDark = isDark,
                             onClick = { navigateToTab("contacts") }
                         )
@@ -788,7 +1089,7 @@ fun DashboardScreen(
                             icon = Icons.Default.NotificationsActive,
                             iconGradient = listOf(LiquidRubyEmergency, LiquidRubyDark),
                             title = "Alerts",
-                            subtitle = "${alerts.size} incidents",
+                            subtitle = if (alerts.isNotEmpty()) "${alerts.size} incidents" else "0 incidents",
                             isDark = isDark,
                             onClick = { navigateToTab("alerts") }
                         )

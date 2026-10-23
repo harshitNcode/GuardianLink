@@ -658,7 +658,8 @@ fun LiquidGlassSearchBar(
     modifier: Modifier = Modifier,
     placeholder: String = "Search projects...",
     isDark: Boolean = LocalIsDarkMode.current,
-    onAddClick: (() -> Unit)? = null
+    onAddClick: (() -> Unit)? = null,
+    onSearch: (() -> Unit)? = null
 ) {
     val shape = CircleShape
     val surfaceColor = if (isDark) LiquidGlassBgDarkElevated else Color.White.copy(alpha = 0.82f)
@@ -705,6 +706,12 @@ fun LiquidGlassSearchBar(
                     )
                 },
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = { onSearch?.invoke() }
+                ),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -873,7 +880,7 @@ fun LiquidGlassSwitch(
  */
 @Composable
 fun LiquidGlassTopNotch(
-    userName: String = "Harshit",
+    userName: String = "YourName",
     isOnline: Boolean = true,
     isDark: Boolean = LocalIsDarkMode.current,
     isRefreshing: Boolean = false,

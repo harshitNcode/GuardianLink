@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">GuardianLink</string>
+    <string name="accessibility_service_desc">Automatically dispatches pre-filled Emergency SOS alerts via WhatsApp without manual intervention.</string>
 </resources>

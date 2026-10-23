@@ -132,7 +132,7 @@ fun GlowProgressBar(
  */
 @Composable
 fun TopIslandNotch(
-    userName: String = "Harshit",
+    userName: String = "YourName",
     isOnline: Boolean = true,
     onMenuClick: (() -> Unit)? = null,
     onAvatarClick: (() -> Unit)? = null

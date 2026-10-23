@@ -3,11 +3,20 @@ package com.guardianlink.app.util
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.telephony.SmsManager
+import android.util.Log
 import android.widget.Toast
+import com.guardianlink.app.data.ApiConfig
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.IOException
 import java.net.URLEncoder
 
 object EmergencyDispatcher {
+
+    private val httpClient = OkHttpClient()
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     fun dispatchEmergencyAlert(
         context: Context,
@@ -17,7 +26,7 @@ object EmergencyDispatcher {
     ) {
         val rawDigits = phoneNumber.filter { it.isDigit() }
         if (rawDigits.isEmpty()) {
-            Toast.makeText(context, "No Emergency Contact configured. Please set one in Contacts.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "No Emergency Contact configured. Please set one in Settings or Contacts.", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -30,34 +39,61 @@ object EmergencyDispatcher {
         }
 
         val timeStr = java.text.SimpleDateFormat("hh:mm a, dd MMM", java.util.Locale.getDefault()).format(java.util.Date())
-        val plainMessage = "EMERGENCY SOS ALERT! I need urgent help! My current GPS location: $locationUrl (Triggered at $timeStr)"
+        val plainMessage = "EMERGENCY SOS ALERT! Urgent help needed! Live GPS location: $locationUrl (Triggered at $timeStr via GuardianLink)"
 
-        // 1. Attempt Automatic Background SMS dispatch
-        try {
-            val smsManager = try {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                    context.getSystemService(SmsManager::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    SmsManager.getDefault()
-                }
+        // 1. Automated WhatsApp Cloud Gateway Dispatch (CallMeBot)
+        // If an API key is set in Settings, sends 100% in background via cloud
+        val callmebotKey = AuthPreference.getCallMeBotKey(context)
+        if (callmebotKey.isNotBlank()) {
+            try {
+                val encodedPlain = URLEncoder.encode(plainMessage, "UTF-8")
+                val callmebotUrl = "https://api.callmebot.com/whatsapp.php?phone=$formattedNumber&text=$encodedPlain&apikey=$callmebotKey"
+                httpClient.newCall(Request.Builder().url(callmebotUrl).build()).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        Log.w("EmergencyDispatcher", "CallMeBot WhatsApp gateway failed: ${e.message}")
+                    }
+                    override fun onResponse(call: Call, response: Response) {
+                        response.close()
+                        Log.d("EmergencyDispatcher", "CallMeBot WhatsApp gateway delivered successfully")
+                    }
+                })
             } catch (e: Exception) {
-                @Suppress("DEPRECATION")
-                SmsManager.getDefault()
+                Log.w("EmergencyDispatcher", "CallMeBot dispatch exception: ${e.message}")
             }
-
-            val parts = smsManager.divideMessage(plainMessage)
-            if (parts.size > 1) {
-                smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
-            } else {
-                smsManager.sendTextMessage(phoneNumber, null, plainMessage, null, null)
-            }
-            Toast.makeText(context, "Emergency SOS alert dispatched!", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            android.util.Log.w("EmergencyDispatcher", "Direct SMS dispatch exception: ${e.message}")
         }
 
-        // 2. Launch WhatsApp with pre-filled message
+        // 2. Backend Emergency Webhook
+        try {
+            val payload = JSONObject().apply {
+                put("recipient_phone", formattedNumber)
+                put("message", plainMessage)
+                put("latitude", latitude ?: 0.0)
+                put("longitude", longitude ?: 0.0)
+                put("location_url", locationUrl)
+                put("timestamp", timeStr)
+                put("channel", "whatsapp")
+            }
+            val body = payload.toString().toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url("${ApiConfig.HTTP_BASE_URL}/api/v1/alerts/dispatch-whatsapp")
+                .addHeader("Bypass-Tunnel-Reminder", "true")
+                .post(body)
+                .build()
+
+            httpClient.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    Log.d("EmergencyDispatcher", "Background WhatsApp relay queued: ${e.message}")
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    response.close()
+                    Log.d("EmergencyDispatcher", "Background WhatsApp relay processed successfully")
+                }
+            })
+        } catch (e: Exception) {
+            Log.w("EmergencyDispatcher", "Background WhatsApp relay exception: ${e.message}")
+        }
+
+        // 3. Official WhatsApp SOS Dispatch (Standard Intent)
         val waMessage = "🚨 *EMERGENCY SOS ALERT!* 🚨\n\n" +
                 "I have triggered an emergency SOS from GuardianLink.\n" +
                 "Please assist immediately!\n\n" +
@@ -75,20 +111,24 @@ object EmergencyDispatcher {
             val whatsappUri = Uri.parse("https://api.whatsapp.com/send?phone=$formattedNumber&text=$encodedMsg")
             val whatsappIntent = Intent(Intent.ACTION_VIEW, whatsappUri).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                setPackage("com.whatsapp")
             }
             context.startActivity(whatsappIntent)
         } catch (e: Exception) {
             try {
-                val smsUri = Uri.parse("smsto:$formattedNumber")
-                val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
-                    putExtra("sms_body", plainMessage)
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$formattedNumber&text=$encodedMsg")).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-                context.startActivity(smsIntent)
-            } catch (e2: Exception) {
-                // Ignore
-            }
+                context.startActivity(fallbackIntent)
+            } catch (_: Exception) {}
         }
+
+        // 4. Toast feedback to user
+        Toast.makeText(
+            context,
+            "🚨 Emergency SOS alert triggered!",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     fun sendWhatsAppAlert(

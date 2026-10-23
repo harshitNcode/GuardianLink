@@ -2,11 +2,22 @@ package com.guardianlink.app.data
 
 object ApiConfig {
     /**
-     * Remote Localtunnel public host URL.
-     * Accessible over the internet from anywhere (mobile data, separate Wi-Fi, etc.)
+     * Default server host (Configurable at runtime in Settings).
+     * Connects directly to the backend over LAN or tunnel.
      */
-    var HOST = "guardianlink-harshit.loca.lt"
-    var USE_SSL = true
+    var HOST = "172.18.112.25:8000"
+
+    /**
+     * Automatically use HTTPS/WSS for domain names (e.g. ngrok, localtunnel),
+     * and HTTP/WS for local IP addresses and dev ports.
+     */
+    val USE_SSL: Boolean
+        get() {
+            val h = HOST.lowercase()
+            return !(h.startsWith("192.") || h.startsWith("172.") || h.startsWith("10.") ||
+                    h.startsWith("127.") || h.startsWith("localhost") ||
+                    h.contains(":8000") || h.contains(":8080") || h.contains(":3000"))
+        }
 
     val HTTP_BASE_URL: String
         get() = (if (USE_SSL) "https://" else "http://") + HOST

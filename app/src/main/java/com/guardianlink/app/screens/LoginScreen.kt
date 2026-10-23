@@ -114,7 +114,7 @@ fun LoginScreen(navController: NavController) {
                             context = context,
                             isLoggedIn = true,
                             uid = user?.uid ?: "google_user",
-                            name = user?.displayName ?: "Harshit",
+                            name = user?.displayName ?: "YourName",
                             email = user?.email ?: ""
                         )
                         navController.navigate("dashboard") {
@@ -141,7 +141,7 @@ fun LoginScreen(navController: NavController) {
         }
     }
 
-    fun proceedToDashboard(uid: String, name: String = "Harshit", phone: String = "", emailStr: String = "") {
+    fun proceedToDashboard(uid: String, name: String = "YourName", phone: String = "", emailStr: String = "") {
         AuthPreference.setLoggedIn(
             context = context,
             isLoggedIn = true,
@@ -466,7 +466,7 @@ fun LoginScreen(navController: NavController) {
                                             if (isFallbackDemoOtp || entered == "123456") {
                                                 proceedToDashboard(
                                                     uid = "phone_${phoneNumber.trim().takeLast(10)}",
-                                                    name = "Harshit",
+                                                    name = "YourName",
                                                     phone = phoneNumber.trim()
                                                 )
                                                 return@Button
@@ -674,7 +674,7 @@ fun LoginScreen(navController: NavController) {
                         onClick = {
                             proceedToDashboard(
                                 uid = "demo_user",
-                                name = "Harshit",
+                                name = "YourName",
                                 phone = "+91 99999 99999"
                             )
                         },

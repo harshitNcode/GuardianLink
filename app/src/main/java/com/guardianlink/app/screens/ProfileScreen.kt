@@ -59,7 +59,7 @@ fun ProfileScreen(
     val isBroadcastingGps by PhoneGpsManager.isBroadcasting.collectAsState()
     val lastBroadcastText by PhoneGpsManager.lastBroadcastText.collectAsState()
 
-    var showSettingsSheet by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings) }
     var showPairDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var newDeviceId by remember { mutableStateOf("") }
@@ -69,6 +69,21 @@ fun ProfileScreen(
     var settingsPhone by remember { mutableStateOf("") }
     var settingsEmergencyContact by remember { mutableStateOf("") }
     var settingsDeviceId by remember { mutableStateOf("") }
+    var settingsCallMeBotKey by remember { mutableStateOf(AuthPreference.getCallMeBotKey(context)) }
+    var settingsServerHost by remember { mutableStateOf(AuthPreference.getServerHost(context)) }
+
+    LaunchedEffect(com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings) {
+        if (com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings) {
+            settingsName = profile.name.ifBlank { "YourName" }
+            settingsPhone = profile.phoneNumber
+            settingsEmergencyContact = profile.emergencyContact
+            settingsDeviceId = profile.deviceId.ifBlank { "demo_device" }
+            settingsCallMeBotKey = AuthPreference.getCallMeBotKey(context)
+            settingsServerHost = AuthPreference.getServerHost(context)
+            showSettingsSheet = true
+            com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings = false
+        }
+    }
 
     // Permission launcher for GPS broadcasting
     val gpsPermissionLauncher = rememberLauncherForActivityResult(
@@ -117,7 +132,7 @@ fun ProfileScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Guardian Profile",
+                    text = "Profile",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = if (isDark) Color.White else TextPrimary
@@ -125,10 +140,11 @@ fun ProfileScreen(
 
                 LiquidGlassCircleButton(
                     onClick = {
-                        settingsName = profile.name.ifBlank { "Harshit" }
+                        settingsName = profile.name.ifBlank { "YourName" }
                         settingsPhone = profile.phoneNumber
                         settingsEmergencyContact = profile.emergencyContact
                         settingsDeviceId = profile.deviceId.ifBlank { "demo_device" }
+                        settingsServerHost = AuthPreference.getServerHost(context)
                         showSettingsSheet = true
                     },
                     size = 42.dp,
@@ -189,7 +205,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = profile.name.ifBlank { "Harshit" },
+                text = profile.name.ifBlank { "YourName" },
                 color = if (isDark) Color.White else TextPrimary,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.ExtraBold
@@ -201,9 +217,49 @@ fun ProfileScreen(
                 fontSize = 12.sp
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // GUARDIAN PROFILE CARD - KEPT VISIBLE OUTSIDE SETTINGS
+            // LIVE GPS BROADCAST BANNER (WHEN ACTIVE)
+            if (isBroadcastingGps) {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = LiquidNeonGreen.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, LiquidNeonGreen.copy(alpha = 0.7f)),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(LiquidNeonGreen.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Sensors, contentDescription = null, tint = LiquidNeonGreen, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Broadcasting this phone's GPS:",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = LiquidNeonGreen
+                            )
+                            Text(
+                                text = lastBroadcastText.ifBlank { "Acquiring GPS fix (ensure Location is ON)..." },
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDark) Color.White else TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // PROFILE CARD - KEPT VISIBLE OUTSIDE SETTINGS
             LiquidGlassCard(
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 24.dp,
@@ -214,55 +270,34 @@ fun ProfileScreen(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(LiquidNeonCyan.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Shield,
-                                    contentDescription = null,
-                                    tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Guardian Profile",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else TextPrimary
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                settingsName = profile.name.ifBlank { "Harshit" }
-                                settingsPhone = profile.phoneNumber
-                                settingsEmergencyContact = profile.emergencyContact
-                                settingsDeviceId = profile.deviceId.ifBlank { "demo_device" }
-                                showSettingsSheet = true
-                            },
-                            modifier = Modifier.size(34.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(LiquidNeonCyan.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit Profile via Settings",
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = null,
                                 tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Profile",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else TextPrimary
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    LiquidProfileDetailRow(icon = Icons.Default.Badge, label = "Full Name", value = profile.name.ifBlank { "Harshit" }, isDark = isDark)
+                    LiquidProfileDetailRow(icon = Icons.Default.Badge, label = "Full Name", value = profile.name.ifBlank { "YourName" }, isDark = isDark)
                     Spacer(modifier = Modifier.height(12.dp))
                     LiquidProfileDetailRow(icon = Icons.Default.Phone, label = "Phone", value = profile.phoneNumber.ifBlank { "Not set (Tap Settings)" }, isDark = isDark)
                     Spacer(modifier = Modifier.height(12.dp))
@@ -275,63 +310,6 @@ fun ProfileScreen(
             }
 
             Spacer(modifier = Modifier.height(18.dp))
-
-            // SETTINGS ENTRY OPTION CARD
-            LiquidGlassCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        settingsName = profile.name.ifBlank { "Harshit" }
-                        settingsPhone = profile.phoneNumber
-                        settingsEmergencyContact = profile.emergencyContact
-                        settingsDeviceId = profile.deviceId.ifBlank { "demo_device" }
-                        showSettingsSheet = true
-                    },
-                cornerRadius = 22.dp,
-                elevation = 6.dp,
-                isDark = isDark
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Brush.linearGradient(LiquidGradientPrimary)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Settings, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column {
-                            Text(
-                                text = "Settings",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = if (isDark) Color.White else TextPrimary
-                            )
-                            Text(
-                                text = "Edit profile, share GPS, theme & device",
-                                fontSize = 12.sp,
-                                color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
-                            )
-                        }
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Open Settings",
-                        tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
 
             // Pair Wearable Device Liquid Pill Button
             LiquidPillButton(
@@ -430,7 +408,7 @@ fun ProfileScreen(
                     value = settingsName,
                     onValueChange = { settingsName = it },
                     label = { Text("Full Name") },
-                    placeholder = { Text("e.g. Harshit") },
+                    placeholder = { Text("e.g. YourName") },
                     leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = PrimaryBlue) },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
@@ -476,6 +454,19 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = settingsServerHost,
+                    onValueChange = { settingsServerHost = it },
+                    label = { Text("Server Host (IP:Port or Tunnel URL)") },
+                    placeholder = { Text("e.g. 172.18.112.25:8000") },
+                    leadingIcon = { Icon(Icons.Default.Dns, contentDescription = null, tint = PrimaryBlue) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Save Profile Button
@@ -484,13 +475,16 @@ fun ProfileScreen(
                     icon = Icons.Default.Check,
                     onClick = {
                         val updated = profile.copy(
-                            name = settingsName.trim().ifBlank { "Harshit" },
+                            name = settingsName.trim().ifBlank { "YourName" },
                             phoneNumber = settingsPhone.trim(),
                             emergencyContact = settingsEmergencyContact.trim(),
                             deviceId = settingsDeviceId.trim().ifBlank { "demo_device" }
                         )
                         viewModel.updateProfile(updated)
-                        Toast.makeText(context, "Profile details updated successfully", Toast.LENGTH_SHORT).show()
+                        AuthPreference.setCallMeBotKey(context, settingsCallMeBotKey)
+                        AuthPreference.setServerHost(context, settingsServerHost)
+                        showSettingsSheet = false
+                        Toast.makeText(context, "Profile & settings saved successfully", Toast.LENGTH_SHORT).show()
                     },
                     variant = LiquidButtonVariant.PRIMARY,
                     modifier = Modifier.fillMaxWidth(),
@@ -547,18 +541,19 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (isBroadcastingGps) "Broadcasting Phone GPS" else "Share This Phone's GPS",
+                                    text = if (isBroadcastingGps) "Broadcasting this phone's GPS" else "Share This Phone's GPS",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = if (isBroadcastingGps) LiquidNeonGreen else (if (isDark) Color.White else TextPrimary)
                                 )
                                 Text(
                                     text = if (isBroadcastingGps)
-                                        "Live: ${lastBroadcastText.ifBlank { "Transmitting location..." }}"
+                                        lastBroadcastText.ifBlank { "Acquiring GPS fix (ensure Location is ON)..." }
                                     else
                                         "Broadcast phone GPS for live wearable tracking",
                                     fontSize = 12.sp,
-                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+                                    fontWeight = if (isBroadcastingGps) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (isBroadcastingGps) (if (isDark) Color.White else TextPrimary) else (if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary)
                                 )
                             }
                         }
@@ -595,7 +590,75 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // SECTION 3: THEME & DISPLAY
+                // SECTION 3: WHATSAPP AUTO-DISPATCH (BACKGROUND SENDING)
+                Text(
+                    text = "WHATSAPP SOS DISPATCH",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = if (isDark) LiquidNeonCyan else PrimaryBlue
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF25D366).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                @Suppress("DEPRECATION")
+                                Icon(Icons.Default.Send, contentDescription = null, tint = Color(0xFF25D366), modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "WhatsApp SOS Dispatch",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (isDark) Color.White else TextPrimary
+                                )
+                                Text(
+                                    text = "Dispatches SOS alert & live GPS coordinates",
+                                    fontSize = 11.sp,
+                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = settingsCallMeBotKey,
+                            onValueChange = { settingsCallMeBotKey = it },
+                            label = { Text("CallMeBot API Key (Direct Cloud WhatsApp)") },
+                            placeholder = { Text("e.g. 1234567 (Optional)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Tip: When SOS is triggered, your emergency alert and live GPS location link are prepared for your emergency contact. With a CallMeBot key, alerts can also be transmitted via Cloud Gateway.",
+                            fontSize = 11.sp,
+                            color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // SECTION 4: THEME & DISPLAY
                 Text(
                     text = "APPEARANCE & THEME",
                     fontSize = 11.sp,

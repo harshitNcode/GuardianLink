@@ -7,6 +7,8 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.Looper
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.guardianlink.app.data.DeviceRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +39,13 @@ object PhoneGpsManager {
         val lm = appCtx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
         locationManager = lm
 
+        val isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        val isNetworkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+        if (!isGpsEnabled && !isNetworkEnabled) {
+            Toast.makeText(appCtx, "Please enable Location/GPS in your Phone Settings", Toast.LENGTH_LONG).show()
+        }
+
         val l = object : LocationListener {
             override fun onLocationChanged(loc: Location) {
                 _lastLocation.value = loc
@@ -51,18 +60,31 @@ object PhoneGpsManager {
         listener = l
 
         try {
-            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 3000L, 2f, l)
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER
+            )
+
+            var bestLoc: Location? = null
+            for (p in providers) {
+                try {
+                    if (lm.isProviderEnabled(p)) {
+                        lm.requestLocationUpdates(p, 2000L, 0f, l, Looper.getMainLooper())
+                        val loc = lm.getLastKnownLocation(p)
+                        if (loc != null && (bestLoc == null || loc.time > bestLoc.time)) {
+                            bestLoc = loc
+                        }
+                    }
+                } catch (_: Exception) {}
             }
-            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3000L, 2f, l)
-            }
-            val lastLoc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            lastLoc?.let {
-                _lastLocation.value = it
-                _lastBroadcastText.value = "%.4f° N, %.4f° E".format(it.latitude, it.longitude)
-                repository.sendPhoneLocation(deviceId, it.latitude, it.longitude)
+
+            if (bestLoc != null) {
+                _lastLocation.value = bestLoc
+                _lastBroadcastText.value = "%.4f° N, %.4f° E".format(bestLoc.latitude, bestLoc.longitude)
+                repository.sendPhoneLocation(deviceId, bestLoc.latitude, bestLoc.longitude)
+            } else {
+                _lastBroadcastText.value = "Acquiring GPS fix..."
             }
             _isBroadcasting.value = true
         } catch (e: SecurityException) {
@@ -77,6 +99,7 @@ object PhoneGpsManager {
         listener = null
         locationManager = null
         _isBroadcasting.value = false
+        _lastBroadcastText.value = ""
     }
 
     fun toggleBroadcasting(context: Context, deviceId: String = "demo_device") {
