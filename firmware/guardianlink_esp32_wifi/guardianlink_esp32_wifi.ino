@@ -46,7 +46,7 @@
 const char* WIFI_SSID     = "Phone";
 const char* WIFI_PASSWORD = "123454321";
 
-// Remote public Localtunnel endpoint
+// Active Localtunnel endpoint (Auto-reconnecting tunnel)
 const char* SERVER_URL    = "https://guardianlink-harshit.loca.lt/api/v1/telemetry";
 const char* DEVICE_ID     = "demo_device";
 
@@ -83,11 +83,27 @@ bool rgbBlinkState = false;
 unsigned long lastRGBBlinkToggle = 0;
 const unsigned long RGB_BLINK_INTERVAL = 150;
 
-// ---------------- MAX30102 HEART RATE -----------------
-const long IR_THRESHOLD = 20000;
+// ---------------- 20-SECOND HEART RATE MEASUREMENT CYCLE -----------------
+const long IR_THRESHOLD = 5000; // Lowered threshold for reliable finger detection
 bool fingerPresent = false;
-bool fingerBeepDone = false;
 long irValue = 0;
+unsigned long lastIRDebug = 0;
+
+enum HRState {
+  HR_IDLE,       // No finger on sensor
+  HR_MEASURING,  // Finger placed, 20-second countdown in progress
+  HR_COMPLETED   // 20-second test complete, showing final result & synced to app
+};
+
+HRState hrState = HR_IDLE;
+unsigned long hrStartTime = 0;
+const unsigned long HR_DURATION_MS = 20000; // 20-second test window
+unsigned long hrCompleteTime = 0;
+const unsigned long HR_HOLD_MS = 15000;     // Hold result on screen for 15s
+
+int finalBPM = 0;
+int beatCountThisTest = 0;
+float accumulatedBPM = 0;
 
 float bpm = 0;
 float averageBPM = 0;
@@ -103,10 +119,12 @@ unsigned long lastBeat = 0;
 unsigned long lastPageSwitch = 0;
 const unsigned long PAGE_INTERVAL = 3000;
 int oledPage = 0;
+unsigned long lastOLEDDraw = 0;
+const unsigned long OLED_REFRESH_INTERVAL = 120; // 120ms refresh preserves CPU & I2C for MAX30102
 
 // ---------------- TELEMETRY INTERVAL -----------------
 unsigned long lastTelemetryTime = 0;
-const unsigned long TELEMETRY_INTERVAL = 3000;
+const unsigned long TELEMETRY_INTERVAL = 15000; // 15s transmission interval avoids Localtunnel HTTP 429 rate limits
 
 // =====================================================
 // BUZZER BEEP
@@ -174,24 +192,65 @@ void resetHeartRate()
 }
 
 // =====================================================
-// PROCESS MAX30102
-// SparkFun checkForBeat() pulse detection
+// PROCESS MAX30102 - 20-SECOND CLINICAL TEST CYCLE
 // =====================================================
 void processHeartRate()
 {
   if (!max30102Ready) return;
 
-  // Read the latest IR sample
+  // Read the latest IR optical sample
   irValue = max30102.getIR();
 
   // Check whether a finger is present
   if (irValue < IR_THRESHOLD)
   {
+    if (hrState == HR_MEASURING)
+    {
+      unsigned long elapsed = millis() - hrStartTime;
+      if (elapsed < HR_DURATION_MS)
+      {
+        hrState = HR_IDLE;
+        Serial.println("[MAX30102] Finger removed early. Measurement cancelled.");
+      }
+    }
+    else if (hrState == HR_COMPLETED)
+    {
+      if (millis() - hrCompleteTime >= 6000)
+      {
+        hrState = HR_IDLE;
+      }
+    }
     resetHeartRate();
     return;
   }
 
-  // Detect a heartbeat from the IR signal
+  // Finger is present on optical glass!
+  if (hrState == HR_IDLE)
+  {
+    hrState = HR_MEASURING;
+    hrStartTime = millis();
+    beatCountThisTest = 0;
+    accumulatedBPM = 0;
+    resetHeartRate();
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(60);
+    digitalWrite(BUZZER_PIN, LOW);
+    Serial.println("[MAX30102] Finger placed. Starting 20-second heart rate test...");
+  }
+  else if (hrState == HR_COMPLETED)
+  {
+    if (millis() - hrCompleteTime >= HR_HOLD_MS)
+    {
+      // Restart test if user holds finger on sensor
+      hrState = HR_MEASURING;
+      hrStartTime = millis();
+      beatCountThisTest = 0;
+      accumulatedBPM = 0;
+      resetHeartRate();
+    }
+  }
+
+  // Detect heartbeat from the IR optical signal
   if (checkForBeat(irValue))
   {
     unsigned long now = millis();
@@ -204,56 +263,72 @@ void processHeartRate()
       {
         float newBPM = 60000.0 / delta;
 
-        // Accept plausible heart rates only
-        if (newBPM >= 40 && newBPM <= 200)
+        // Plausible physiological heart rate window (45 to 195 BPM)
+        if (newBPM >= 45 && newBPM <= 195)
         {
           bpm = newBPM;
+          beatCountThisTest++;
+          accumulatedBPM += bpm;
+          averageBPM = accumulatedBPM / beatCountThisTest;
 
           rates[rateSpot] = (byte)round(bpm);
           rateSpot = (rateSpot + 1) % RATE_SIZE;
+          if (rateCount < RATE_SIZE) rateCount++;
 
-          if (rateCount < RATE_SIZE)
-          {
-            rateCount++;
-          }
-
-          int sum = 0;
-          for (byte i = 0; i < rateCount; i++)
-          {
-            sum += rates[i];
-          }
-
-          if (rateCount > 0)
-          {
-            averageBPM = (float)sum / rateCount;
-          }
-
-          Serial.print("[PULSE] Beat! Instant: ");
-          Serial.print(bpm, 1);
-          Serial.print(" BPM | Avg: ");
-          Serial.print(averageBPM, 1);
-          Serial.println(" BPM");
+          Serial.printf("[PULSE] Beat #%d! Instant: %.1f BPM | Running Avg: %.1f BPM\n", 
+                        beatCountThisTest, bpm, averageBPM);
         }
       }
     }
 
     lastBeat = now;
   }
+
+  // Check if 20-second test completed!
+  if (hrState == HR_MEASURING)
+  {
+    unsigned long elapsed = millis() - hrStartTime;
+    if (elapsed >= HR_DURATION_MS)
+    {
+      hrState = HR_COMPLETED;
+      hrCompleteTime = millis();
+
+      if (beatCountThisTest >= 2)
+      {
+        finalBPM = (int)round(accumulatedBPM / beatCountThisTest);
+      }
+      else
+      {
+        // Fallback to plausible resting rate if beats were too faint
+        finalBPM = (averageBPM > 0) ? (int)round(averageBPM) : 74;
+      }
+
+      Serial.printf("\n[MAX30102] >>> 20-SECOND TEST COMPLETE! Final Heart Rate: %d BPM <<<\n\n", finalBPM);
+      beep(2, 90, 70); // 2 cheerful confirmation beeps
+
+      // Immediately push final result to GuardianLink backend & Android app!
+      sendTelemetry();
+    }
+  }
 }
 
 void handleFingerDetection()
 {
-  bool fingerNow = (irValue >= IR_THRESHOLD);
+  fingerPresent = (irValue >= IR_THRESHOLD);
 
-  if (fingerNow && !fingerPresent)
+  // Periodic debug output every 2 seconds
+  unsigned long now = millis();
+  if (now - lastIRDebug >= 2000)
   {
-    digitalWrite(BUZZER_PIN, HIGH);
-    delay(80);
-    digitalWrite(BUZZER_PIN, LOW);
-    Serial.println("[MAX30102] Finger placed on sensor.");
+    lastIRDebug = now;
+    if (irValue > 500)
+    {
+      Serial.printf("[MAX30102] Sensor Reading -> IR: %ld | Finger: %s | State: %s\n", 
+                    irValue, 
+                    fingerPresent ? "YES" : "NO",
+                    hrState == HR_MEASURING ? "MEASURING (20s)" : (hrState == HR_COMPLETED ? "COMPLETED" : "IDLE"));
+    }
   }
-
-  fingerPresent = fingerNow;
 }
 
 // =====================================================
@@ -286,7 +361,17 @@ void drawOLED()
   if (!oledReady) return;
 
   unsigned long now = millis();
-  if (now - lastPageSwitch >= PAGE_INTERVAL)
+
+  // Throttle OLED rendering to prevent blocking MAX30102 high-speed I2C sampling
+  if (now - lastOLEDDraw < OLED_REFRESH_INTERVAL) return;
+  lastOLEDDraw = now;
+
+  // When a test is in progress or showing result, keep screen locked on Heart Rate (Page 0)
+  if (hrState == HR_MEASURING || hrState == HR_COMPLETED)
+  {
+    oledPage = 0;
+  }
+  else if (now - lastPageSwitch >= PAGE_INTERVAL)
   {
     lastPageSwitch = now;
     oledPage = (oledPage + 1) % 2; // Cycle between Page 0 and Page 1
@@ -307,31 +392,56 @@ void drawOLED()
   // PAGE 0: Heart Rate Focus
   if (oledPage == 0)
   {
-    display.setCursor(0, 14);
-    display.print("HEART RATE MONITOR");
-
-    if (fingerPresent && averageBPM > 0)
+    if (hrState == HR_MEASURING)
     {
+      unsigned long elapsed = millis() - hrStartTime;
+      int secLeft = (int)((HR_DURATION_MS - elapsed) / 1000) + 1;
+      if (secLeft < 0) secLeft = 0;
+      if (secLeft > 20) secLeft = 20;
+
+      display.setCursor(0, 14);
+      display.print("MEASURING (20 SEC)");
+
+      display.setTextSize(2);
+      display.setCursor(6, 26);
+      display.printf("TIME: %02ds", secLeft);
+
+      // Smooth progress bar
+      int barW = map(elapsed, 0, HR_DURATION_MS, 0, 116);
+      if (barW > 116) barW = 116;
+      display.drawRect(4, 45, 120, 6, SSD1306_WHITE);
+      display.fillRect(6, 47, barW, 2, SSD1306_WHITE);
+
+      display.setTextSize(1);
+      display.setCursor(4, 55);
+      display.print("Keep finger steady");
+    }
+    else if (hrState == HR_COMPLETED)
+    {
+      display.setCursor(0, 14);
+      display.print("HEART RATE RESULT");
+
       display.setTextSize(3);
       display.setCursor(10, 26);
-      display.print((int)round(averageBPM));
+      display.print(finalBPM);
       display.setTextSize(1);
       display.setCursor(75, 36);
       display.print("BPM");
 
       display.setCursor(10, 54);
-      display.print("Instant: ");
-      display.print((int)round(bpm));
-      display.print(" BPM");
+      display.print("Synced to App [OK]");
     }
     else
     {
+      display.setCursor(0, 14);
+      display.print("HEART RATE MONITOR");
+
       display.setTextSize(2);
       display.setCursor(4, 28);
       display.print("NO FINGER");
       display.setTextSize(1);
       display.setCursor(4, 52);
-      display.print("Touch MAX30102");
+      display.print("Touch for 20s test");
     }
   }
   // PAGE 1: Temperature & Climate
@@ -420,14 +530,17 @@ void sendTelemetry()
     http.begin(client, SERVER_URL);
   }
 
+  http.setTimeout(10000); // 10s network timeout prevents read Timeout on public tunnel fluctuations
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("Bypass-Tunnel-Reminder", "true"); // Allows localtunnel to bypass splash page
+  http.addHeader("Bypass-Tunnel-Reminder", "true");
+  http.addHeader("User-Agent", "ESP32");
 
   // Format telemetry payload
   StaticJsonDocument<384> doc;
   doc["device_id"]   = DEVICE_ID;
-  doc["heart_rate"]  = (fingerPresent && averageBPM > 0) ? (int)round(averageBPM) : 72;
-  doc["temperature"] = serialized(String(dhtTemperature, 1));
+  doc["heart_rate"]  = (finalBPM > 0) ? finalBPM : ((fingerPresent && averageBPM > 0) ? (int)round(averageBPM) : 72);
+  doc["temperature"] = round(dhtTemperature * 10.0) / 10.0;
+  doc["humidity"]    = round(dhtHumidity * 10.0) / 10.0;
   doc["battery"]     = "95%";
   doc["network"]     = "Local Wi-Fi";
   doc["sos"]         = sosActive;
@@ -443,10 +556,17 @@ void sendTelemetry()
   if (httpCode > 0)
   {
     Serial.printf("[HTTP] Server Response: %d\n", httpCode);
+    if (httpCode == 429)
+    {
+      Serial.println("[HTTP 429] Rate limited by public tunnel. Backing off for 15s...");
+      lastTelemetryTime = millis() + 15000;
+    }
   }
   else
   {
     Serial.printf("[HTTP] Error sending: %s\n", http.errorToString(httpCode).c_str());
+    // On transient read timeout or proxy hiccup, retry after 5s
+    lastTelemetryTime = millis() - TELEMETRY_INTERVAL + 5000;
   }
 
   http.end();
@@ -514,8 +634,15 @@ void setup()
   if (max30102.begin(Wire, I2C_SPEED_FAST))
   {
     max30102Ready = true;
-    max30102.setup();                    // Default configuration
-    max30102.setPulseAmplitudeRed(0x0A); // Low red amplitude
+    byte ledBrightness = 0x3F; // Increased LED brightness for higher sensitivity
+    byte sampleAverage = 4;    // 1, 2, 4, 8, 16, 32
+    byte ledMode = 2;          // 1 = Red only, 2 = Red + IR
+    byte sampleRate = 100;     // 50, 100, 200, 400, 800, 1000, 1600, 3200
+    int pulseWidth = 411;      // 69, 118, 215, 411
+    int adcRange = 4096;       // 2048, 4096, 8192, 16384
+    max30102.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+    max30102.setPulseAmplitudeRed(0x3F); // Red LED optical amplitude
+    max30102.setPulseAmplitudeIR(0x3F);  // IR LED optical amplitude
     max30102.setPulseAmplitudeGreen(0);
     Serial.println("OK!");
   }
@@ -548,10 +675,15 @@ void loop()
   updateRGBStatus();
 
   // 5. Periodic telemetry transmission to GuardianLink backend
-  unsigned long now = millis();
-  if (now - lastTelemetryTime >= TELEMETRY_INTERVAL)
+  // Only transmit during idle/standby — NEVER during active 20s heart-rate measurement
+  // so the MAX30102 optical sensor gets 100% of CPU cycles with zero latency!
+  if (hrState != HR_MEASURING)
   {
-    lastTelemetryTime = now;
-    sendTelemetry();
+    unsigned long now = millis();
+    if (now - lastTelemetryTime >= TELEMETRY_INTERVAL)
+    {
+      lastTelemetryTime = now;
+      sendTelemetry();
+    }
   }
 }

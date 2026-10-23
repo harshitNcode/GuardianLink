@@ -17,16 +17,31 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         get() = FirebaseAuth.getInstance().currentUser?.uid
             ?: AuthPreference.getUid(getApplication())
 
-    private val _profile = MutableStateFlow(
-        UserProfile(
-            uid = "demo_user",
-            name = AuthPreference.getName(application),
-            phoneNumber = AuthPreference.getPhone(application)
+    companion object {
+        private val _sharedProfile = MutableStateFlow(
+            UserProfile(
+                uid = "demo_user",
+                name = "Harshit",
+                phoneNumber = "",
+                deviceId = "demo_device",
+                emergencyContact = ""
+            )
         )
-    )
-    val profile: StateFlow<UserProfile> = _profile
+    }
+
+    val profile: StateFlow<UserProfile> = _sharedProfile
 
     init {
+        // Sync local storage on creation
+        if (_sharedProfile.value.name.isBlank() || _sharedProfile.value.name == "Harshit") {
+            _sharedProfile.value = _sharedProfile.value.copy(
+                uid = currentUid,
+                name = AuthPreference.getName(application),
+                phoneNumber = AuthPreference.getPhone(application),
+                deviceId = AuthPreference.getDeviceId(application),
+                emergencyContact = AuthPreference.getEmergencyContact(application)
+            )
+        }
         loadProfile()
     }
 
@@ -35,17 +50,31 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         android.util.Log.d("GuardianLink", "Starting fetch for uid: $uid")
         repository.fetchProfile(uid) { fetched ->
             android.util.Log.d("GuardianLink", "Fetched profile: $fetched")
-            _profile.value = fetched
+            val merged = fetched.copy(
+                name = fetched.name.ifBlank { AuthPreference.getName(getApplication()) },
+                phoneNumber = fetched.phoneNumber.ifBlank { AuthPreference.getPhone(getApplication()) },
+                deviceId = fetched.deviceId.ifBlank { AuthPreference.getDeviceId(getApplication()) },
+                emergencyContact = fetched.emergencyContact.ifBlank { AuthPreference.getEmergencyContact(getApplication()) }
+            )
+            _sharedProfile.value = merged
+            AuthPreference.setName(getApplication(), merged.name)
+            AuthPreference.setPhone(getApplication(), merged.phoneNumber)
+            AuthPreference.setDeviceId(getApplication(), merged.deviceId)
+            AuthPreference.setEmergencyContact(getApplication(), merged.emergencyContact)
         }
     }
 
     fun saveProfilePhoto(localPath: String) {
-        _profile.value = _profile.value.copy(photoLocalPath = localPath)
+        _sharedProfile.value = _sharedProfile.value.copy(photoLocalPath = localPath)
         repository.updatePhotoPath(currentUid, localPath)
     }
 
     fun updateProfile(updated: UserProfile) {
-        _profile.value = updated
+        _sharedProfile.value = updated
+        AuthPreference.setName(getApplication(), updated.name)
+        AuthPreference.setPhone(getApplication(), updated.phoneNumber)
+        AuthPreference.setDeviceId(getApplication(), updated.deviceId)
+        AuthPreference.setEmergencyContact(getApplication(), updated.emergencyContact)
         repository.saveProfile(updated)
     }
 }

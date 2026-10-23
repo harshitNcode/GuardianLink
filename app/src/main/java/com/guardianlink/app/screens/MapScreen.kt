@@ -1,6 +1,16 @@
 package com.guardianlink.app.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +42,7 @@ import com.guardianlink.app.R
 import com.guardianlink.app.data.GeofenceWktHelper
 import com.guardianlink.app.model.GeofenceZone
 import com.guardianlink.app.ui.theme.*
+import com.guardianlink.app.util.MapPreference
 import com.guardianlink.app.viewmodel.DeviceViewModel
 import com.guardianlink.app.viewmodel.DrawingShape
 import com.guardianlink.app.viewmodel.GeofenceViewModel
@@ -71,37 +83,10 @@ private val GoogleSatelliteHybridTileSource = object : OnlineTileSourceBase(
     }
 }
 
-// High-Resolution Modern CartoDB Map Tile Sources
-private val CartoVoyagerTileSource = XYTileSource(
-    "CartoVoyager",
-    0, 20, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
-    ),
-    "© OpenStreetMap contributors, © CARTO"
-)
-
-private val CartoDarkTileSource = XYTileSource(
-    "CartoDark",
-    0, 20, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/dark_all/",
-        "https://b.basemaps.cartocdn.com/dark_all/",
-        "https://c.basemaps.cartocdn.com/dark_all/",
-        "https://d.basemaps.cartocdn.com/dark_all/"
-    ),
-    "© OpenStreetMap contributors, © CARTO"
-)
-
 enum class MapStyle(val title: String) {
-    STANDARD("Classic OpenStreetMap"),
+    STANDARD("Standard Street Map"),
     SATELLITE("Satellite (Aerial & Road Labels)"),
-    TERRAIN("Topographic Terrain"),
-    VOYAGER("Voyager (CartoDB)"),
-    DARK("Dark Matter (CartoDB)")
+    TERRAIN("Topographic Terrain")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,27 +100,51 @@ fun MapScreen(
     val status by deviceViewModel.status.collectAsState()
     val context = LocalContext.current
 
-    var selectedStyle by remember { mutableStateOf(MapStyle.STANDARD) }
+    var selectedStyle by rememberSaveable {
+        mutableStateOf(
+            try {
+                MapStyle.valueOf(MapPreference.getMapStyle(context))
+            } catch (_: Exception) {
+                MapStyle.STANDARD
+            }
+        )
+    }
     var showLayerMenu by remember { mutableStateOf(false) }
     var showGeofenceSheet by remember { mutableStateOf(false) }
     var showShapeSelectorDialog by remember { mutableStateOf(false) }
     var showSaveZoneDialog by remember { mutableStateOf(false) }
     var newZoneName by remember { mutableStateOf("") }
 
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+    var deviceMarkerRef by remember { mutableStateOf<Marker?>(null) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                      permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val loc = try {
+                lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            } catch (_: SecurityException) { null }
+            if (loc != null) {
+                mapViewRef?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
+                android.widget.Toast.makeText(context, "Centered on your location", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // Initialize osmdroid user agent & cache
     LaunchedEffect(Unit) {
         Configuration.getInstance().userAgentValue = context.packageName
     }
 
-    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
-    var deviceMarkerRef by remember { mutableStateOf<Marker?>(null) }
-
     fun getTileSource(style: MapStyle) = when (style) {
         MapStyle.STANDARD -> TileSourceFactory.MAPNIK
         MapStyle.SATELLITE -> GoogleSatelliteHybridTileSource
         MapStyle.TERRAIN -> TileSourceFactory.OpenTopo
-        MapStyle.VOYAGER -> CartoVoyagerTileSource
-        MapStyle.DARK -> CartoDarkTileSource
     }
 
     // References for dynamic in-flight drag updates
@@ -819,6 +828,7 @@ fun MapScreen(
                             },
                             onClick = {
                                 selectedStyle = style
+                                MapPreference.setMapStyle(context, style.name)
                                 showLayerMenu = false
                             },
                             leadingIcon = {
@@ -863,27 +873,47 @@ fun MapScreen(
                 )
             }
 
-            // Recenter Button
-            if (status.hasValidLocation) {
-                LiquidGlassCircleButton(
-                    onClick = {
-                        val lat = status.latitude
-                        val lng = status.longitude
-                        if (lat != null && lng != null) {
-                            mapViewRef?.controller?.animateTo(GeoPoint(lat, lng))
+            // My Location Button
+            LiquidGlassCircleButton(
+                onClick = {
+                    val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+                    if (hasFine || hasCoarse) {
+                        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                        val phoneLoc = try {
+                            lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                                ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                        } catch (_: SecurityException) { null }
+
+                        if (phoneLoc != null) {
+                            mapViewRef?.controller?.animateTo(GeoPoint(phoneLoc.latitude, phoneLoc.longitude))
+                            android.widget.Toast.makeText(context, "Centered on your location", android.widget.Toast.LENGTH_SHORT).show()
+                        } else if (status.hasValidLocation) {
+                            mapViewRef?.controller?.animateTo(GeoPoint(status.latitude!!, status.longitude!!))
+                            android.widget.Toast.makeText(context, "Centered on wearable device", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            android.widget.Toast.makeText(context, "Searching for GPS signal...", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                    },
-                    size = 52.dp,
-                    containerColor = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
-                    contentColor = if (isDarkMode) LiquidCanvasDark else Color.White,
-                    isDark = isDarkMode
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MyLocation,
-                        contentDescription = "Recenter Map",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                    } else {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
+                },
+                size = 52.dp,
+                containerColor = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                contentColor = if (isDarkMode) LiquidCanvasDark else Color.White,
+                isDark = isDarkMode
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MyLocation,
+                    contentDescription = "My Location",
+                    modifier = Modifier.size(24.dp)
+                )
             }
         }
 

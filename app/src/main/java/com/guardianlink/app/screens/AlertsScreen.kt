@@ -45,6 +45,10 @@ fun AlertsScreen(
     val alerts by alertViewModel.alerts.collectAsState()
     val isDark = isDarkMode
 
+    LaunchedEffect(Unit) {
+        alertViewModel.refresh()
+    }
+
     var selectedFilter by remember { mutableStateOf(AlertFilter.ALL) }
     val acknowledgedAlerts = remember { mutableStateListOf<String>() }
 
@@ -119,19 +123,43 @@ fun AlertsScreen(
                     }
                 }
 
-                if (alerts.isNotEmpty()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Refresh Alerts Button
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = LiquidRubyEmergency.copy(alpha = 0.2f),
-                        border = BorderStroke(1.dp, LiquidRubyEmergency.copy(alpha = 0.5f))
+                        shape = CircleShape,
+                        color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clickable { alertViewModel.refresh() }
                     ) {
-                        Text(
-                            text = "${alerts.size} Active",
-                            color = if (isDark) Color.White else LiquidRubyEmergency,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh Alerts",
+                                tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    if (alerts.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = LiquidRubyEmergency.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, LiquidRubyEmergency.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "${alerts.size} Active",
+                                color = if (isDark) Color.White else LiquidRubyEmergency,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
             }

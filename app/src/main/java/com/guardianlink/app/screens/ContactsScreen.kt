@@ -28,8 +28,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.guardianlink.app.components.*
 import com.guardianlink.app.model.Contact
+import com.guardianlink.app.data.ContactLocalStore
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.viewmodel.ContactViewModel
+import com.guardianlink.app.viewmodel.UserViewModel
+import com.guardianlink.app.util.AuthPreference
 
 @Composable
 fun ContactsScreen(
@@ -39,7 +42,11 @@ fun ContactsScreen(
 ) {
     val context = LocalContext.current
     val isDark = isDarkMode
+    val userViewModel: UserViewModel = viewModel()
+    val profile by userViewModel.profile.collectAsState()
 
+    var showSosNumberDialog by remember { mutableStateOf(false) }
+    var newSosPhone by remember { mutableStateOf(profile.emergencyContact.ifBlank { AuthPreference.getEmergencyContact(context) }) }
     var showAddEditDialog by remember { mutableStateOf(false) }
     var contactToDelete by remember { mutableStateOf<Contact?>(null) }
     var editingContact by remember { mutableStateOf<Contact?>(null) }
@@ -103,22 +110,135 @@ fun ContactsScreen(
                     }
                 }
 
-                // Add Contact Liquid Pill Button
-                LiquidPillButton(
-                    text = "Add",
-                    icon = Icons.Default.PersonAdd,
-                    onClick = {
-                        editingContact = null
-                        newName = ""
-                        newPhone = ""
-                        showAddEditDialog = true
-                    },
-                    variant = LiquidButtonVariant.PRIMARY,
-                    height = 42.dp
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Refresh Contacts Button
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clickable {
+                                val cached = ContactLocalStore.loadContacts(context.applicationContext as android.app.Application)
+                                if (cached.isNotEmpty()) {
+                                    contactViewModel.contacts.clear()
+                                    contactViewModel.contacts.addAll(cached)
+                                }
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh Contacts",
+                                tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Add Contact Liquid Pill Button
+                    LiquidPillButton(
+                        text = "Add",
+                        icon = Icons.Default.PersonAdd,
+                        onClick = {
+                            editingContact = null
+                            newName = ""
+                            newPhone = ""
+                            showAddEditDialog = true
+                        },
+                        variant = LiquidButtonVariant.PRIMARY,
+                        height = 42.dp
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Primary Emergency SOS Contact Card
+            LiquidGlassCard(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 20.dp,
+                elevation = 6.dp,
+                isDark = isDark,
+                glowColor = LiquidRubyEmergency.copy(alpha = 0.25f),
+                borderColor = LiquidRubyEmergency.copy(alpha = 0.45f)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Brush.linearGradient(listOf(LiquidRubyEmergency, LiquidNeonPink))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Emergency SOS",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "SOS WhatsApp Number",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (isDark) Color.White else TextPrimary
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (profile.emergencyContact.isNotBlank()) LiquidNeonGreen.copy(alpha = 0.15f) else LiquidRubyEmergency.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = if (profile.emergencyContact.isNotBlank()) "ACTIVE" else "NOT SET",
+                                        color = if (profile.emergencyContact.isNotBlank()) LiquidNeonGreen else LiquidRubyEmergency,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = profile.emergencyContact.ifBlank { "Tap edit to configure number" },
+                                fontSize = 12.sp,
+                                color = if (isDark) Color.White.copy(alpha = 0.7f) else TextSecondary
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            newSosPhone = profile.emergencyContact.ifBlank { AuthPreference.getEmergencyContact(context) }
+                            showSosNumberDialog = true
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit SOS Number",
+                            tint = if (isDark) LiquidNeonCyan else PrimaryBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Contact List
             if (contactViewModel.contacts.isEmpty()) {
@@ -168,6 +288,65 @@ fun ContactsScreen(
                 }
             }
         }
+    }
+
+    // Set SOS Emergency Number Dialog
+    if (showSosNumberDialog) {
+        AlertDialog(
+            onDismissRequest = { showSosNumberDialog = false },
+            containerColor = if (isDark) LiquidSurfaceDark else LiquidSurfaceLight,
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Text(
+                    "Set SOS Emergency Number",
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White else TextPrimary
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "Enter the phone number that will automatically receive WhatsApp & SMS alerts with your live location when the SOS button is triggered:",
+                        fontSize = 13.sp,
+                        color = if (isDark) Color.White.copy(alpha = 0.75f) else TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = newSosPhone,
+                        onValueChange = { newSosPhone = it },
+                        label = { Text("SOS Phone Number") },
+                        placeholder = { Text("e.g. +91 98765 43210") },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Phone, contentDescription = null, tint = LiquidRubyEmergency)
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                LiquidPillButton(
+                    text = "Save SOS Number",
+                    onClick = {
+                        val cleaned = newSosPhone.trim()
+                        AuthPreference.setEmergencyContact(context, cleaned)
+                        userViewModel.updateProfile(profile.copy(emergencyContact = cleaned))
+                        showSosNumberDialog = false
+                    },
+                    variant = LiquidButtonVariant.PRIMARY,
+                    height = 44.dp
+                )
+            },
+            dismissButton = {
+                LiquidPillButton(
+                    text = "Cancel",
+                    onClick = { showSosNumberDialog = false },
+                    variant = LiquidButtonVariant.FROSTED,
+                    height = 44.dp
+                )
+            }
+        )
     }
 
     // Add / Edit Contact Dialog

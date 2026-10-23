@@ -1,47 +1,63 @@
 package com.guardianlink.app.model
 
 data class DeviceStatus(
-    val battery: String = "92%",
-    val gps: String = "28.6139, 77.2090",
+    val battery: String = "--",
+    val gps: String = "--",
     val network: String = "Wi-Fi",
-    val device: String = "Online",
+    val device: String = "Offline",
     val sos: Boolean = false,
-    val heartRate: Int = 74,
-    val temperature: Float = 36.6f,
+    val heartRate: Int = 0,
+    val temperature: Float = 0.0f,
+    val humidity: Float = 0.0f,
     val rawLatitude: Double? = null,
-    val rawLongitude: Double? = null
+    val rawLongitude: Double? = null,
+    val lastUpdatedTimestamp: Long = 0L
 ) {
+    // Device is considered disconnected if backend status is Offline or no packet received for > 40s
+    val isDisconnected: Boolean
+        get() = device.contains("Offline", ignoreCase = true) ||
+                (lastUpdatedTimestamp > 0L && (System.currentTimeMillis() - lastUpdatedTimestamp) > 40_000L)
+
+    val isStale: Boolean
+        get() = isDisconnected
+
     val latitude: Double?
-        get() = rawLatitude ?: gps.split(",").getOrNull(0)?.trim()?.toDoubleOrNull() ?: 28.6139
+        get() = rawLatitude ?: gps.split(",").getOrNull(0)?.trim()?.toDoubleOrNull()
 
     val longitude: Double?
-        get() = rawLongitude ?: gps.split(",").getOrNull(1)?.trim()?.toDoubleOrNull() ?: 77.2090
+        get() = rawLongitude ?: gps.split(",").getOrNull(1)?.trim()?.toDoubleOrNull()
 
     val hasValidLocation: Boolean
-        get() = latitude != null && longitude != null
+        get() = latitude != null && longitude != null && latitude != 0.0 && longitude != 0.0
 
     val displayGps: String
         get() {
             val lat = latitude
             val lon = longitude
-            return if (lat != null && lon != null) {
+            return if (lat != null && lon != null && lat != 0.0 && lon != 0.0) {
                 "${"%.4f".format(lat)}° N, ${"%.4f".format(lon)}° E"
             } else {
-                gps
+                if (gps.isNotBlank() && gps != "--") gps else "Awaiting GPS Fix"
             }
         }
 
+    // Always preserve and display cached old data even when disconnected!
     val displayHeartRate: String
-        get() = "$heartRate BPM"
+        get() = if (heartRate > 0) "$heartRate BPM" else "--"
 
     val displayTemperature: String
-        get() = "${"%.1f".format(temperature)}°C"
+        get() = if (temperature > 0f) "${"%.1f".format(temperature)}°C" else "--"
 
     val displayTemperatureFahrenheit: String
-        get() = "${"%.1f".format((temperature * 9f / 5f) + 32f)}°F"
+        get() = if (temperature > 0f) "${"%.1f".format((temperature * 9f / 5f) + 32f)}°F" else "--"
+
+    val displayHumidity: String
+        get() = if (humidity > 0f) "${humidity.toInt()}%" else "--"
 
     val heartRateStatus: String
         get() = when {
+            heartRate <= 0 -> "Awaiting Sensor"
+            isDisconnected -> "Last Known"
             heartRate > 120 -> "Elevated"
             heartRate < 55 -> "Low Pulse"
             else -> "Normal"
@@ -49,9 +65,20 @@ data class DeviceStatus(
 
     val temperatureStatus: String
         get() = when {
+            temperature <= 0f -> "Awaiting Sensor"
+            isDisconnected -> "Last Known"
             temperature >= 38.5f -> "Fever"
             temperature >= 37.5f -> "Warm"
             temperature < 35.0f -> "Low"
             else -> "Normal"
+        }
+
+    val humidityStatus: String
+        get() = when {
+            humidity <= 0f -> "Awaiting Sensor"
+            isDisconnected -> "Last Known"
+            humidity > 70f -> "High"
+            humidity < 30f -> "Dry"
+            else -> "Comfort"
         }
 }

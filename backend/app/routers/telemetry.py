@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.device import Device, TelemetryLog
 from app.models.alert import Alert
-from app.schemas.telemetry import TelemetryCreate, TelemetryResponse, DeviceStatusResponse
+from app.schemas.telemetry import TelemetryCreate, TelemetryResponse, DeviceStatusResponse, LocationUpdate
 from app.services.websocket_manager import manager as ws_manager
 from app.services.geofence_service import evaluate_geofences
 from app.services.notification_service import dispatch_emergency_notification
@@ -15,15 +15,24 @@ router = APIRouter(prefix="/api/v1/telemetry", tags=["Telemetry & Devices"])
 
 def format_device_status(device: Device) -> dict:
     gps_str = f"{device.last_latitude}, {device.last_longitude}" if device.last_latitude and device.last_longitude else "--"
+    
+    # Calculate online status dynamically: mark Offline if no telemetry received for > 40 seconds
+    status_str = device.status
+    if device.updated_at:
+        elapsed = (datetime.datetime.utcnow() - device.updated_at).total_seconds()
+        if elapsed > 40 and not device.sos:
+            status_str = "Offline"
+
     return {
         "device_id": device.device_id,
         "name": device.name,
-        "status": device.status,
+        "status": status_str,
         "battery": device.battery,
         "network": device.network,
         "sos": device.sos,
-        "heart_rate": device.heart_rate if device.heart_rate is not None else 72,
-        "temperature": device.temperature if device.temperature is not None else 36.6,
+        "heart_rate": device.heart_rate,
+        "temperature": device.temperature,
+        "humidity": device.humidity,
         "latitude": device.last_latitude,
         "longitude": device.last_longitude,
         "gps": gps_str,
@@ -55,6 +64,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             sos=payload.sos or False,
             heart_rate=payload.heart_rate if payload.heart_rate is not None else 72,
             temperature=payload.temperature if payload.temperature is not None else 36.6,
+            humidity=payload.humidity if payload.humidity is not None else 50.0,
             updated_at=datetime.datetime.utcnow()
         )
         db.add(device)
@@ -70,6 +80,8 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             device.heart_rate = payload.heart_rate
         if payload.temperature is not None:
             device.temperature = payload.temperature
+        if payload.humidity is not None:
+            device.humidity = payload.humidity
         device.sos = payload.sos or False
         device.status = "Alert" if payload.sos else "Online"
         device.updated_at = datetime.datetime.utcnow()
@@ -86,6 +98,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         sos=payload.sos or False,
         heart_rate=payload.heart_rate,
         temperature=payload.temperature,
+        humidity=payload.humidity,
         timestamp=datetime.datetime.utcnow()
     )
     db.add(log)
@@ -93,29 +106,37 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
     db.refresh(device)
 
     # 3. Server-side Geofence Evaluation (evaluated only when valid coordinates exist)
+    geofence_results = []
     if current_lat != 0.0 and current_lon != 0.0:
         geofence_results = evaluate_geofences(db, target_device_id, current_lat, current_lon)
     for result in geofence_results:
         if not result.is_inside:
-            # Geofence breach detected!
-            breach_alert = Alert(
-                user_id="default_user",
-                device_id=target_device_id,
-                title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
-                time=datetime.datetime.now().strftime("%I:%M %p"),
-                type="warning",
-                latitude=payload.latitude,
-                longitude=payload.longitude
-            )
-            db.add(breach_alert)
-            db.commit()
-            await dispatch_emergency_notification(
-                user_id="default_user",
-                device_id=target_device_id,
-                title=breach_alert.title,
-                latitude=payload.latitude,
-                longitude=payload.longitude
-            )
+            # 45-second cooldown per safe zone to allow responsive map alerts without flooding DB
+            recent_alert = db.query(Alert).filter(
+                Alert.device_id == target_device_id,
+                Alert.title.like(f"%{result.zone_name}%"),
+                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=45)
+            ).first()
+
+            if not recent_alert:
+                breach_alert = Alert(
+                    user_id="default_user",
+                    device_id=target_device_id,
+                    title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
+                    time=datetime.datetime.now().strftime("%I:%M %p"),
+                    type="warning",
+                    latitude=current_lat,
+                    longitude=current_lon
+                )
+                db.add(breach_alert)
+                db.commit()
+                await dispatch_emergency_notification(
+                    user_id="default_user",
+                    device_id=target_device_id,
+                    title=breach_alert.title,
+                    latitude=current_lat,
+                    longitude=current_lon
+                )
 
     # 4. Handle Hardware SOS button trigger
     if payload.sos:
@@ -170,6 +191,86 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
     if payload.device_id != target_device_id:
         await ws_manager.broadcast_to_device(payload.device_id, status_dict)
 
+    return DeviceStatusResponse(**status_dict)
+
+
+@router.post("/{device_id}/location", response_model=DeviceStatusResponse)
+async def update_device_location(device_id: str, payload: LocationUpdate, db: Session = Depends(get_db)):
+    """
+    Update live GPS coordinates for the wearable device from a companion phone.
+    - Sets device.last_latitude and device.last_longitude
+    - Evaluates safe zone geofences (creates breach alerts if outside)
+    - Broadcasts live position to all monitoring phones
+    """
+    target_device_id = "demo_device" if (device_id == "string" or not device_id) else device_id
+    device = db.query(Device).filter(Device.device_id == target_device_id).first()
+    if not device:
+        device = Device(
+            device_id=target_device_id,
+            name="Guardian Wearable",
+            status="Online",
+            battery="95%",
+            network="Phone GPS",
+            sos=False,
+            last_latitude=payload.latitude,
+            last_longitude=payload.longitude,
+            updated_at=datetime.datetime.utcnow()
+        )
+        db.add(device)
+    else:
+        device.last_latitude = payload.latitude
+        device.last_longitude = payload.longitude
+        device.updated_at = datetime.datetime.utcnow()
+
+    # Log to historical trail
+    log = TelemetryLog(
+        device_id=target_device_id,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        battery=device.battery or "95%",
+        network="Phone GPS",
+        sos=device.sos,
+        heart_rate=device.heart_rate,
+        temperature=device.temperature,
+        humidity=device.humidity,
+        timestamp=datetime.datetime.utcnow()
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(device)
+
+    # Evaluate Geofences immediately with new phone GPS coordinates
+    geofence_results = evaluate_geofences(db, target_device_id, payload.latitude, payload.longitude)
+    for result in geofence_results:
+        if not result.is_inside:
+            recent_alert = db.query(Alert).filter(
+                Alert.device_id == target_device_id,
+                Alert.title.like(f"%{result.zone_name}%"),
+                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=45)
+            ).first()
+
+            if not recent_alert:
+                breach_alert = Alert(
+                    user_id="default_user",
+                    device_id=target_device_id,
+                    title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
+                    time=datetime.datetime.now().strftime("%I:%M %p"),
+                    type="warning",
+                    latitude=payload.latitude,
+                    longitude=payload.longitude
+                )
+                db.add(breach_alert)
+                db.commit()
+                await dispatch_emergency_notification(
+                    user_id="default_user",
+                    device_id=target_device_id,
+                    title=breach_alert.title,
+                    latitude=payload.latitude,
+                    longitude=payload.longitude
+                )
+
+    status_dict = format_device_status(device)
+    await ws_manager.broadcast_to_device(target_device_id, status_dict)
     return DeviceStatusResponse(**status_dict)
 
 

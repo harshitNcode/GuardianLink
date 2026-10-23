@@ -1,6 +1,7 @@
 package com.guardianlink.app.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,11 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.guardianlink.app.components.*
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.viewmodel.AlertViewModel
 import com.guardianlink.app.viewmodel.DeviceViewModel
+import com.guardianlink.app.viewmodel.UserViewModel
 import java.util.Calendar
 
 @Composable
@@ -33,12 +36,30 @@ fun DashboardScreen(
 ) {
     val alertViewModel = remember { AlertViewModel() }
     val deviceViewModel = remember { DeviceViewModel() }
+    val userViewModel: UserViewModel = viewModel()
+    val userProfile by userViewModel.profile.collectAsState()
     val status by deviceViewModel.status.collectAsState()
+    val isRefreshing by deviceViewModel.isRefreshing.collectAsState()
     val alerts by alertViewModel.alerts.collectAsState()
     val isDark = isDarkMode
 
     var searchQuery by remember { mutableStateOf("") }
+    var isSosTriggering by remember { mutableStateOf(false) }
+    val isSosActive = status.sos || isSosTriggering
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showSosConfirmDialog by remember { mutableStateOf(false) }
+    var showSosCancelDialog by remember { mutableStateOf(false) }
+    var sosTargetPhone by remember { mutableStateOf(userProfile.emergencyContact.ifBlank { com.guardianlink.app.util.AuthPreference.getEmergencyContact(context) }) }
+
+    LaunchedEffect(userProfile.emergencyContact) {
+        if (userProfile.emergencyContact.isNotBlank()) {
+            sosTargetPhone = userProfile.emergencyContact
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        alertViewModel.refresh()
+    }
 
     // Dynamic greeting based on time of day
     val greeting = remember {
@@ -76,16 +97,21 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding(),
-            contentPadding = PaddingValues(bottom = 120.dp),
+            contentPadding = PaddingValues(bottom = 150.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
             // Top Status Island Notch
             item {
                 LiquidGlassTopNotch(
-                    userName = "Harshit",
-                    isOnline = status.device.contains("Online", ignoreCase = true),
+                    userName = userProfile.name.ifBlank { "Harshit" },
+                    isOnline = status.device.contains("Online", ignoreCase = true) && !status.isDisconnected,
                     isDark = isDark,
+                    isRefreshing = isRefreshing,
+                    onRefreshClick = {
+                        deviceViewModel.refresh()
+                        alertViewModel.refresh()
+                    },
                     onAvatarClick = { navigateToTab("profile") },
                     onMenuClick = { navigateToTab("alerts") }
                 )
@@ -102,7 +128,7 @@ fun DashboardScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Harshit",
+                        text = userProfile.name.ifBlank { "Harshit" },
                         color = if (isDark) Color.White else TextPrimary,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.ExtraBold,
@@ -119,6 +145,76 @@ fun DashboardScreen(
                         isDark = isDark,
                         onAddClick = { navigateToTab("map") }
                     )
+                }
+            }
+
+            // Real-Time Active SOS Emergency Banner
+            if (isSosActive) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                        LiquidGlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            cornerRadius = 20.dp,
+                            elevation = 0.dp,
+                            isDark = isDark,
+                            glowColor = LiquidRubyEmergency,
+                            borderColor = LiquidRubyEmergency.copy(alpha = 0.85f)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(LiquidRubyEmergency),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "EMERGENCY SOS ACTIVE",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 13.sp,
+                                        color = LiquidRubyEmergency
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Broadcasting live GPS (${status.gps}) to all guardians",
+                                        fontSize = 11.sp,
+                                        color = if (isDark) Color.White.copy(alpha = 0.80f) else TextSecondary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                TextButton(onClick = {
+                                    isSosTriggering = false
+                                    alertViewModel.cancelSOS {
+                                        deviceViewModel.refresh()
+                                        alertViewModel.refresh()
+                                    }
+                                }) {
+                                    Text(
+                                        "CANCEL",
+                                        color = LiquidRubyEmergency,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -294,439 +390,298 @@ fun DashboardScreen(
 
                         }
 
-
-
-                        Surface(
-
-                            shape = CircleShape,
-
-                            color = LiquidNeonPink.copy(alpha = 0.15f),
-
-                            border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonPink.copy(alpha = 0.35f))
-
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = LiquidNeonCyan.copy(alpha = 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonCyan.copy(alpha = 0.35f)),
+                                modifier = Modifier.clickable { deviceViewModel.refresh() }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Refresh",
+                                        tint = LiquidNeonCyan,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isRefreshing) "SYNCING..." else "REFRESH",
+                                        color = LiquidNeonCyan,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
 
-                            Text(
-
-                                text = "ESP32 LIVE",
-
-                                color = if (isDark) LiquidNeonPink else LiquidRubyEmergency,
-
-                                fontSize = 10.sp,
-
-                                fontWeight = FontWeight.ExtraBold,
-
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-
-                            )
-
+                            Surface(
+                                shape = CircleShape,
+                                color = LiquidNeonPink.copy(alpha = 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonPink.copy(alpha = 0.35f))
+                            ) {
+                                Text(
+                                    text = "ESP32 LIVE",
+                                    color = if (isDark) LiquidNeonPink else LiquidRubyEmergency,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                )
+                            }
                         }
 
                     }
-
-
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-
-
-                    // Dual Vitals Cards: Heart Rate & Temperature
-
+                    // Dual Vitals Cards: Heart Rate & Temperature (Equal 182.dp Height)
                     Row(
-
                         modifier = Modifier.fillMaxWidth(),
-
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
-
                     ) {
-
                         // Heart Rate Monitor
-
                         LiquidGlassCard(
-
-                            modifier = Modifier.weight(1f),
-
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(182.dp),
                             cornerRadius = 24.dp,
-
                             isDark = isDark,
-
                             glowColor = LiquidRubyEmergency.copy(alpha = 0.25f)
-
                         ) {
-
-                            Column(modifier = Modifier.fillMaxWidth()) {
-
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Row(
-
                                     modifier = Modifier.fillMaxWidth(),
-
                                     horizontalArrangement = Arrangement.SpaceBetween,
-
                                     verticalAlignment = Alignment.CenterVertically
-
                                 ) {
-
                                     Box(
-
                                         modifier = Modifier
-
                                             .size(42.dp)
-
                                             .clip(RoundedCornerShape(13.dp))
-
                                             .background(
-
                                                 Brush.linearGradient(
-
                                                     listOf(LiquidRubyEmergency, LiquidNeonPink)
-
                                                 )
-
                                             ),
-
                                         contentAlignment = Alignment.Center
-
                                     ) {
-
                                         Icon(
-
                                             imageVector = Icons.Default.Favorite,
-
                                             contentDescription = "Heart Rate",
-
                                             tint = Color.White,
-
                                             modifier = Modifier.size(22.dp)
-
                                         )
-
                                     }
-
-
 
                                     Surface(
-
                                         shape = CircleShape,
-
                                         color = when {
-
+                                            status.heartRate <= 0 -> Color.Gray.copy(alpha = 0.2f)
+                                            status.isDisconnected -> LiquidSunsetAmber.copy(alpha = 0.2f)
                                             status.heartRate > 120 -> LiquidRubyEmergency.copy(alpha = 0.2f)
-
                                             status.heartRate < 55 -> LiquidSunsetAmber.copy(alpha = 0.2f)
-
                                             else -> LiquidNeonGreen.copy(alpha = 0.15f)
-
                                         }
-
                                     ) {
-
                                         Text(
-
                                             text = status.heartRateStatus,
-
                                             color = when {
-
+                                                status.heartRate <= 0 -> if (isDark) Color.LightGray else TextSecondary
+                                                status.isDisconnected -> LiquidSunsetAmber
                                                 status.heartRate > 120 -> LiquidRubyEmergency
-
                                                 status.heartRate < 55 -> LiquidSunsetAmber
-
                                                 else -> LiquidNeonGreen
-
                                             },
-
                                             fontSize = 9.sp,
-
                                             fontWeight = FontWeight.Bold,
-
                                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
 
+                                Column {
+                                    Text(
+                                        text = "Heart Rate",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Row(verticalAlignment = Alignment.Bottom) {
+                                        Text(
+                                            text = if (status.heartRate <= 0) "--" else "${status.heartRate}",
+                                            fontSize = 26.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color.White else TextPrimary
                                         )
 
+                                        if (status.heartRate > 0) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "BPM",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = LiquidNeonPink,
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            )
+                                        }
                                     }
-
                                 }
 
-
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-
-
                                 Text(
-
-                                    text = "Heart Rate",
-
-                                    fontSize = 12.sp,
-
-                                    fontWeight = FontWeight.Medium,
-
-                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
-
-                                )
-
-
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-
-
-                                Row(verticalAlignment = Alignment.Bottom) {
-
-                                    Text(
-
-                                        text = "${status.heartRate}",
-
-                                        fontSize = 26.sp,
-
-                                        fontWeight = FontWeight.ExtraBold,
-
-                                        color = if (isDark) Color.White else TextPrimary
-
-                                    )
-
-                                    Spacer(modifier = Modifier.width(4.dp))
-
-                                    Text(
-
-                                        text = "BPM",
-
-                                        fontSize = 12.sp,
-
-                                        fontWeight = FontWeight.SemiBold,
-
-                                        color = LiquidNeonPink,
-
-                                        modifier = Modifier.padding(bottom = 4.dp)
-
-                                    )
-
-                                }
-
-
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-
-
-                                Text(
-
                                     text = "Target: 60-100 BPM",
-
                                     fontSize = 10.sp,
-
                                     color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary
-
                                 )
-
                             }
-
                         }
-
-
 
                         // Body Temperature Monitor
-
                         LiquidGlassCard(
-
-                            modifier = Modifier.weight(1f),
-
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(182.dp),
                             cornerRadius = 24.dp,
-
                             isDark = isDark,
-
                             glowColor = LiquidSunsetAmber.copy(alpha = 0.25f)
-
                         ) {
-
-                            Column(modifier = Modifier.fillMaxWidth()) {
-
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Row(
-
                                     modifier = Modifier.fillMaxWidth(),
-
                                     horizontalArrangement = Arrangement.SpaceBetween,
-
                                     verticalAlignment = Alignment.CenterVertically
-
                                 ) {
-
                                     Box(
-
                                         modifier = Modifier
-
                                             .size(42.dp)
-
                                             .clip(RoundedCornerShape(13.dp))
-
                                             .background(
-
                                                 Brush.linearGradient(
-
                                                     listOf(LiquidSunsetAmber, LiquidHoneyGold)
-
                                                 )
-
                                             ),
-
                                         contentAlignment = Alignment.Center
-
                                     ) {
-
                                         Icon(
-
                                             imageVector = Icons.Default.Thermostat,
-
                                             contentDescription = "Temperature",
-
                                             tint = Color.White,
-
                                             modifier = Modifier.size(22.dp)
-
                                         )
-
                                     }
-
-
 
                                     Surface(
-
                                         shape = CircleShape,
-
                                         color = when {
-
+                                            status.temperature <= 0f -> Color.Gray.copy(alpha = 0.2f)
+                                            status.isDisconnected -> LiquidSunsetAmber.copy(alpha = 0.2f)
                                             status.temperature >= 38.0f -> LiquidRubyEmergency.copy(alpha = 0.2f)
-
                                             status.temperature >= 37.5f -> LiquidSunsetAmber.copy(alpha = 0.2f)
-
                                             else -> LiquidNeonGreen.copy(alpha = 0.15f)
-
                                         }
-
                                     ) {
-
                                         Text(
-
                                             text = status.temperatureStatus,
-
                                             color = when {
-
+                                                status.temperature <= 0f -> if (isDark) Color.LightGray else TextSecondary
+                                                status.isDisconnected -> LiquidSunsetAmber
                                                 status.temperature >= 38.0f -> LiquidRubyEmergency
-
                                                 status.temperature >= 37.5f -> LiquidSunsetAmber
-
                                                 else -> LiquidNeonGreen
-
                                             },
-
                                             fontSize = 9.sp,
-
                                             fontWeight = FontWeight.Bold,
-
                                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
 
+                                Column {
+                                    Text(
+                                        text = "Body Temp & Humidity",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
+                                    )
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Row(verticalAlignment = Alignment.Bottom) {
+                                        Text(
+                                            text = if (status.temperature <= 0f) "--" else "%.1f".format(status.temperature),
+                                            fontSize = 26.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isDark) Color.White else TextPrimary
                                         )
 
+                                        if (status.temperature > 0f) {
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "°C",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = LiquidSunsetAmber,
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "(${status.displayTemperatureFahrenheit})",
+                                                fontSize = 10.sp,
+                                                color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary,
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            )
+                                        }
                                     }
 
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.WaterDrop,
+                                            contentDescription = "Humidity",
+                                            tint = if (status.humidity <= 0f) (if (isDark) Color.LightGray else TextSecondary) else LiquidNeonCyan,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (status.humidity <= 0f) "Awaiting Sensor" else "${status.displayHumidity} (${status.humidityStatus})",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (status.humidity <= 0f) (if (isDark) Color.LightGray else TextSecondary) else (if (isDark) LiquidNeonCyan else PrimaryBlue)
+                                        )
+                                    }
                                 }
 
-
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-
-
                                 Text(
-
-                                    text = "Body Temp",
-
-                                    fontSize = 12.sp,
-
-                                    fontWeight = FontWeight.Medium,
-
-                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
-
-                                )
-
-
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-
-
-                                Row(verticalAlignment = Alignment.Bottom) {
-
-                                    Text(
-
-                                        text = "%.1f".format(status.temperature),
-
-                                        fontSize = 26.sp,
-
-                                        fontWeight = FontWeight.ExtraBold,
-
-                                        color = if (isDark) Color.White else TextPrimary
-
-                                    )
-
-                                    Spacer(modifier = Modifier.width(3.dp))
-
-                                    Text(
-
-                                        text = "°C",
-
-                                        fontSize = 13.sp,
-
-                                        fontWeight = FontWeight.SemiBold,
-
-                                        color = LiquidSunsetAmber,
-
-                                        modifier = Modifier.padding(bottom = 4.dp)
-
-                                    )
-
-                                    Spacer(modifier = Modifier.width(6.dp))
-
-                                    Text(
-
-                                        text = "(${status.displayTemperatureFahrenheit})",
-
-                                        fontSize = 10.sp,
-
-                                        color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary,
-
-                                        modifier = Modifier.padding(bottom = 4.dp)
-
-                                    )
-
-                                }
-
-
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-
-
-                                Text(
-
                                     text = "Normal: 36.5°C - 37.2°C",
-
                                     fontSize = 10.sp,
-
                                     color = if (isDark) Color.White.copy(alpha = 0.5f) else TextSecondary
-
                                 )
-
                             }
-
                         }
-
                     }
-
                 }
-
             }
-
-
 
             // System Modules Section (6 Liquid Glass Tiles in 3x2 Grid)
             item {
@@ -748,7 +703,7 @@ fun DashboardScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, LiquidNeonCyan.copy(alpha = 0.3f))
                         ) {
                             Text(
-                                text = "8 ACTIVE",
+                                text = "6 ACTIVE",
                                 color = if (isDark) LiquidNeonCyan else PrimaryBlue,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -839,31 +794,7 @@ fun DashboardScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Row 4: Biometrics (Heart Rate & Temperature)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        LiquidGlassTile(
-                            modifier = Modifier.weight(1f),
-                            icon = Icons.Default.Favorite,
-                            iconGradient = listOf(LiquidRubyEmergency, LiquidNeonPink),
-                            title = "Heart Rate",
-                            subtitle = status.displayHeartRate,
-                            isDark = isDark
-                        )
-
-                        LiquidGlassTile(
-                            modifier = Modifier.weight(1f),
-                            icon = Icons.Default.Thermostat,
-                            iconGradient = listOf(LiquidSunsetAmber, LiquidHoneyGold),
-                            title = "Body Temp",
-                            subtitle = status.displayTemperature,
-                            isDark = isDark
-                        )
-                    }
+                    
                 }
             }
 
@@ -872,20 +803,27 @@ fun DashboardScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     LiquidGlassSOSButton(
-                        onClick = { showSosConfirmDialog = true }
+                        isActive = isSosActive,
+                        onClick = {
+                            if (!isSosActive) {
+                                showSosConfirmDialog = true
+                            } else {
+                                showSosCancelDialog = true
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "Instant emergency broadcast to all guardians",
+                        text = if (isSosActive) "🚨 SOS BROADCAST ACTIVE • TAP TO CANCEL" else "Instant emergency broadcast to all guardians",
                         fontSize = 12.sp,
-                        color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
-                        fontWeight = FontWeight.Medium
+                        color = if (isSosActive) LiquidRubyEmergency else if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary,
+                        fontWeight = if (isSosActive) FontWeight.Bold else FontWeight.Medium
                     )
                 }
             }
@@ -943,13 +881,90 @@ fun DashboardScreen(
                     }
                 }
             }
+
+            item {
+                Spacer(modifier = Modifier.height(40.dp))
+            }
         }
     }
 
-    // Emergency Confirmation Dialog (Styled in Liquid Glass)
+    // SOS Confirmation Dialog (Saved number from Contacts is dispatched automatically)
     if (showSosConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showSosConfirmDialog = false },
+            containerColor = if (isDark) LiquidSurfaceDark else LiquidSurfaceLight,
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = LiquidRubyEmergency,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "Trigger Emergency SOS?",
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDark) Color.White else TextPrimary
+                    )
+                }
+            },
+            text = {
+                val targetPhone = userProfile.emergencyContact.ifBlank { com.guardianlink.app.util.AuthPreference.getEmergencyContact(context) }
+                Text(
+                    text = if (targetPhone.isNotBlank()) {
+                        "Are you sure you want to trigger Emergency SOS? This will broadcast an alert and immediately dispatch your live GPS coordinates to your saved emergency contact ($targetPhone)."
+                    } else {
+                        "Are you sure you want to trigger Emergency SOS? This will immediately broadcast an emergency alert to all guardians. (Tip: You can set an automatic emergency contact in Contacts)."
+                    },
+                    color = if (isDark) Color.White.copy(alpha = 0.85f) else TextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                LiquidPillButton(
+                    text = "CONFIRM SOS",
+                    onClick = {
+                        val targetPhone = userProfile.emergencyContact.ifBlank { com.guardianlink.app.util.AuthPreference.getEmergencyContact(context) }
+                        showSosConfirmDialog = false
+                        isSosTriggering = true
+
+                        // 1. Log alert in backend and update UI
+                        alertViewModel.triggerSOS {
+                            alertViewModel.refresh()
+                            isSosTriggering = false
+                        }
+
+                        // 2. Dispatch Emergency Alert (Background SMS + WhatsApp) to saved contact
+                        if (targetPhone.isNotBlank()) {
+                            com.guardianlink.app.util.EmergencyDispatcher.dispatchEmergencyAlert(
+                                context = context,
+                                phoneNumber = targetPhone,
+                                latitude = status.latitude,
+                                longitude = status.longitude
+                            )
+                        }
+                    },
+                    variant = LiquidButtonVariant.EMERGENCY,
+                    height = 46.dp
+                )
+            },
+            dismissButton = {
+                LiquidPillButton(
+                    text = "Cancel",
+                    onClick = { showSosConfirmDialog = false },
+                    variant = LiquidButtonVariant.FROSTED,
+                    height = 46.dp
+                )
+            }
+        )
+    }
+
+    // Emergency Stand-Down Dialog
+    if (showSosCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showSosCancelDialog = false },
             containerColor = if (isDark) LiquidSurfaceDark else LiquidSurfaceLight,
             shape = RoundedCornerShape(26.dp),
             icon = {
@@ -970,23 +985,27 @@ fun DashboardScreen(
             },
             title = {
                 Text(
-                    "Confirm Emergency SOS",
+                    "Stand Down Emergency SOS?",
                     fontWeight = FontWeight.Bold,
                     color = if (isDark) Color.White else TextPrimary
                 )
             },
             text = {
                 Text(
-                    "Are you sure you want to trigger an Emergency SOS? This will immediately notify all designated guardians with your live GPS location (${status.gps}).",
+                    "Are you safe? Standing down will cancel the emergency beacon sent to all guardians.",
                     color = if (isDark) Color.White.copy(alpha = 0.75f) else TextSecondary
                 )
             },
             confirmButton = {
                 LiquidPillButton(
-                    text = "TRIGGER SOS",
+                    text = "STAND DOWN",
                     onClick = {
-                        alertViewModel.triggerSOS()
-                        showSosConfirmDialog = false
+                        showSosCancelDialog = false
+                        isSosTriggering = false
+                        alertViewModel.cancelSOS {
+                            deviceViewModel.refresh()
+                            alertViewModel.refresh()
+                        }
                     },
                     variant = LiquidButtonVariant.EMERGENCY,
                     height = 44.dp
@@ -994,8 +1013,8 @@ fun DashboardScreen(
             },
             dismissButton = {
                 LiquidPillButton(
-                    text = "Cancel",
-                    onClick = { showSosConfirmDialog = false },
+                    text = "Keep Active",
+                    onClick = { showSosCancelDialog = false },
                     variant = LiquidButtonVariant.FROSTED,
                     height = 44.dp
                 )

@@ -17,6 +17,7 @@ class Device(Base):
     sos = Column(Boolean, default=False)
     heart_rate = Column(Integer, default=72)
     temperature = Column(Float, default=36.6)
+    humidity = Column(Float, default=50.0)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     telemetry_logs = relationship("TelemetryLog", back_populates="device", cascade="all, delete-orphan")
@@ -34,6 +35,7 @@ class TelemetryLog(Base):
     sos = Column(Boolean, default=False)
     heart_rate = Column(Integer, nullable=True)
     temperature = Column(Float, nullable=True)
+    humidity = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
     device = relationship("Device", back_populates="telemetry_logs")

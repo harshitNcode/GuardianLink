@@ -10,6 +10,8 @@ object AuthPreference {
     private const val KEY_NAME = "name"
     private const val KEY_PHONE = "phone"
     private const val KEY_EMAIL = "email"
+    private const val KEY_DEVICE_ID = "device_id"
+    private const val KEY_EMERGENCY_CONTACT = "emergency_contact"
 
     fun isLoggedIn(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -52,6 +54,36 @@ object AuthPreference {
     fun getEmail(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString(KEY_EMAIL, "") ?: ""
+    }
+
+    fun setName(context: Context, name: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_NAME, name).apply()
+    }
+
+    fun setPhone(context: Context, phone: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_PHONE, phone).apply()
+    }
+
+    fun getDeviceId(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DEVICE_ID, "demo_device") ?: "demo_device"
+    }
+
+    fun setDeviceId(context: Context, deviceId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_DEVICE_ID, deviceId).apply()
+    }
+
+    fun getEmergencyContact(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_EMERGENCY_CONTACT, "") ?: ""
+    }
+
+    fun setEmergencyContact(context: Context, contact: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_EMERGENCY_CONTACT, contact).apply()
     }
 
     fun clear(context: Context) {

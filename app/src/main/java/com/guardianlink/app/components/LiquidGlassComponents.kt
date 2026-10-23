@@ -154,20 +154,41 @@ fun LiquidGlassCard(
     cornerRadius: Dp = 24.dp,
     elevation: Dp = 0.dp,
     isDark: Boolean = LocalIsDarkMode.current,
-    glowColor: Color = if (isDark) LiquidNeonCyan.copy(alpha = 0.18f) else Color(0x1A6366F1),
+    glowColor: Color = if (isDark) LiquidNeonCyan.copy(alpha = 0.22f) else Color(0x246366F1),
     borderColor: Color? = null,
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(cornerRadius)
 
-    val surfaceBg = if (isDark) LiquidGlassBgDarkElevated else LiquidGlassBgLightElevated
+    val surfaceBgBrush = if (isDark) {
+        Brush.linearGradient(
+            colors = listOf(
+                Color(0x73161F36),
+                Color(0x5910172A),
+                Color(0x661A2440)
+            ),
+            start = Offset(0f, 0f),
+            end = Offset(400f, 600f)
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color(0xF2FFFFFF),
+                Color(0xD9FFFFFF),
+                Color(0xE6F8FAFF)
+            ),
+            start = Offset(0f, 0f),
+            end = Offset(400f, 600f)
+        )
+    }
+
     val defaultBorderBrush = Brush.linearGradient(
         colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.50f else 0.95f),
-            Color.White.copy(alpha = if (isDark) 0.12f else 0.40f),
-            if (isDark) LiquidNeonCyan.copy(alpha = 0.35f) else LiquidPrismaticCyan.copy(alpha = 0.30f),
-            if (isDark) LiquidNeonPurple.copy(alpha = 0.25f) else LiquidPrismaticMagenta.copy(alpha = 0.25f)
+            Color.White.copy(alpha = if (isDark) 0.65f else 0.98f),
+            Color.White.copy(alpha = if (isDark) 0.18f else 0.45f),
+            if (isDark) LiquidNeonCyan.copy(alpha = 0.40f) else LiquidPrismaticCyan.copy(alpha = 0.35f),
+            if (isDark) LiquidNeonPurple.copy(alpha = 0.30f) else LiquidPrismaticMagenta.copy(alpha = 0.25f)
         ),
         start = Offset(0f, 0f),
         end = Offset(400f, 550f)
@@ -195,7 +216,7 @@ fun LiquidGlassCard(
             .scale(pressScale)
             .then(shadowModifier)
             .clip(shape)
-            .background(surfaceBg)
+            .background(surfaceBgBrush)
             .clickable(
                 enabled = onClick != null,
                 interactionSource = interactionSource,
@@ -203,13 +224,28 @@ fun LiquidGlassCard(
                 onClick = { onClick?.invoke() }
             )
     ) {
-        // Specular Top Sheen Highlight Overlay
+        // Specular Top Sheen & Radiant Accent Caustic Highlight Overlay
         Canvas(modifier = Modifier.matchParentSize()) {
-            // Draw subtle convex specular light across top 45% of card
+            // 1. Radiant Ambient Accent Glow (blooms softly from behind the icon/top-left)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        glowColor.copy(alpha = if (isDark) 0.32f else 0.20f),
+                        glowColor.copy(alpha = if (isDark) 0.08f else 0.04f),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.25f, size.height * 0.28f),
+                    radius = size.width * 0.70f
+                ),
+                center = Offset(size.width * 0.25f, size.height * 0.28f),
+                radius = size.width * 0.70f
+            )
+
+            // 2. Draw subtle convex specular light across top 45% of card
             val sheenBrush = Brush.verticalGradient(
                 colors = listOf(
-                    Color.White.copy(alpha = if (isDark) 0.20f else 0.60f),
-                    Color.White.copy(alpha = if (isDark) 0.03f else 0.10f),
+                    Color.White.copy(alpha = if (isDark) 0.25f else 0.72f),
+                    Color.White.copy(alpha = if (isDark) 0.04f else 0.14f),
                     Color.Transparent
                 ),
                 startY = 0f,
@@ -220,7 +256,7 @@ fun LiquidGlassCard(
                 size = Size(size.width, size.height * 0.45f)
             )
 
-            // Draw Refractive Luminous Glass Border
+            // 3. Draw Refractive Luminous Glass Border
             val borderStrokeWidth = 1.3.dp.toPx()
             if (borderColor != null) {
                 drawRoundRect(
@@ -468,80 +504,60 @@ fun LiquidGlassTile(
 ) {
     LiquidGlassCard(
         modifier = modifier,
-        cornerRadius = 22.dp,
+        cornerRadius = 24.dp,
         elevation = 0.dp,
         isDark = isDark,
-        glowColor = iconGradient.firstOrNull()?.copy(alpha = 0.20f) ?: LiquidNeonCyan.copy(alpha = 0.15f),
+        glowColor = iconGradient.firstOrNull() ?: LiquidNeonCyan,
         onClick = onClick
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // 3D Jelly Icon Squircle Badge (Refined Radiant Glass Specular)
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(iconGradient)),
+                contentAlignment = Alignment.Center
             ) {
-                // 3D Jelly Icon Squircle Badge (Image 3)
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(Brush.linearGradient(iconGradient)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.matchParentSize()) {
-                        drawRoundRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color.White.copy(alpha = 0.55f), Color.Transparent),
-                                startY = 0f,
-                                endY = size.height * 0.5f
-                            ),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(13.dp.toPx())
-                        )
-                    }
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = title,
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.60f), Color.Transparent),
+                            startY = 0f,
+                            endY = size.height * 0.55f
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx())
                     )
                 }
-
-                // Mini Glass Arrow / Indicator
-                Surface(
-                    shape = CircleShape,
-                    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = if (isDark) 0.20f else 0.80f)),
-                    modifier = Modifier.size(26.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowForwardIos,
-                            contentDescription = null,
-                            tint = if (isDark) Color.White.copy(alpha = 0.7f) else TextSecondary,
-                            modifier = Modifier.size(11.dp)
-                        )
-                    }
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = title,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
                 color = if (isDark) Color.White.copy(alpha = 0.70f) else TextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             Text(
                 text = subtitle,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = if (isDark) Color.White else TextPrimary,
+                color = if (isDark) Color.White else Color(0xFF0F172A),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -860,9 +876,22 @@ fun LiquidGlassTopNotch(
     userName: String = "Harshit",
     isOnline: Boolean = true,
     isDark: Boolean = LocalIsDarkMode.current,
+    isRefreshing: Boolean = false,
+    onRefreshClick: (() -> Unit)? = null,
     onMenuClick: (() -> Unit)? = null,
     onAvatarClick: (() -> Unit)? = null
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "refresh_spin")
+    val spinAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "spin_angle"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -871,19 +900,27 @@ fun LiquidGlassTopNotch(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left Status Glass Bead (Cloud sync)
+        // Left Status Glass Bead (Cloud sync & Refresh)
         Surface(
             shape = CircleShape,
             color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.75f),
             border = BorderStroke(1.dp, Color.White.copy(alpha = if (isDark) 0.25f else 0.85f)),
-            modifier = Modifier.size(42.dp)
+            modifier = Modifier
+                .size(42.dp)
+                .clickable(enabled = onRefreshClick != null) { onRefreshClick?.invoke() }
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    imageVector = Icons.Default.CloudQueue,
-                    contentDescription = "Cloud Status",
-                    tint = if (isOnline) LiquidNeonGreen else OfflineGray,
-                    modifier = Modifier.size(21.dp)
+                    imageVector = if (isRefreshing) Icons.Default.Refresh else Icons.Default.CloudQueue,
+                    contentDescription = "Cloud Status and Refresh",
+                    tint = if (isRefreshing) LiquidNeonCyan else (if (isOnline) LiquidNeonGreen else OfflineGray),
+                    modifier = Modifier
+                        .size(21.dp)
+                        .graphicsLayer {
+                            if (isRefreshing) {
+                                rotationZ = spinAngle
+                            }
+                        }
                 )
             }
         }
@@ -973,6 +1010,7 @@ fun LiquidGlassTopNotch(
 @Composable
 fun LiquidGlassSOSButton(
     modifier: Modifier = Modifier,
+    isActive: Boolean = false,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -982,18 +1020,18 @@ fun LiquidGlassSOSButton(
 
     val wave1Scale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.45f,
+        targetValue = if (isActive) 1.25f else 1.28f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearOutSlowInEasing),
+            animation = tween(if (isActive) 1800 else 2400, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "w1_scale"
     )
     val wave1Alpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
+        initialValue = if (isActive) 0.55f else 0.45f,
         targetValue = 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearOutSlowInEasing),
+            animation = tween(if (isActive) 1800 else 2400, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "w1_alpha"
@@ -1001,18 +1039,18 @@ fun LiquidGlassSOSButton(
 
     val wave2Scale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.25f,
+        targetValue = if (isActive) 1.15f else 1.18f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, delayMillis = 500, easing = LinearOutSlowInEasing),
+            animation = tween(if (isActive) 1800 else 2400, delayMillis = if (isActive) 350 else 600, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "w2_scale"
     )
     val wave2Alpha by infiniteTransition.animateFloat(
-        initialValue = 0.7f,
+        initialValue = if (isActive) 0.50f else 0.40f,
         targetValue = 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, delayMillis = 500, easing = LinearOutSlowInEasing),
+            animation = tween(if (isActive) 1800 else 2400, delayMillis = if (isActive) 350 else 600, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "w2_alpha"
@@ -1020,22 +1058,28 @@ fun LiquidGlassSOSButton(
 
     val corePulse by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.04f,
+        targetValue = if (isActive) 1.02f else 1.03f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
+            animation = tween(if (isActive) 1500 else 1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "core_pulse"
     )
 
     val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else corePulse,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        targetValue = if (isPressed) 0.95f else corePulse,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy),
         label = "sos_press"
     )
 
     Box(
-        modifier = modifier.size(230.dp),
+        modifier = modifier
+            .size(230.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         // Outer Radar Glow 1
@@ -1044,7 +1088,10 @@ fun LiquidGlassSOSButton(
                 .size(175.dp)
                 .scale(wave1Scale)
                 .clip(CircleShape)
-                .background(LiquidRubyEmergency.copy(alpha = wave1Alpha))
+                .background(
+                    if (isActive) Color(0xFFFF1744).copy(alpha = wave1Alpha)
+                    else LiquidRubyEmergency.copy(alpha = wave1Alpha)
+                )
         )
 
         // Outer Radar Glow 2
@@ -1053,7 +1100,10 @@ fun LiquidGlassSOSButton(
                 .size(175.dp)
                 .scale(wave2Scale)
                 .clip(CircleShape)
-                .background(LiquidNeonMagenta.copy(alpha = wave2Alpha))
+                .background(
+                    if (isActive) Color.White.copy(alpha = wave2Alpha * 0.7f)
+                    else LiquidNeonMagenta.copy(alpha = wave2Alpha)
+                )
         )
 
         // Core 3D Liquid Glass Ruby Orb
@@ -1061,16 +1111,15 @@ fun LiquidGlassSOSButton(
             modifier = Modifier
                 .size(175.dp)
                 .scale(pressScale)
-                .shadow(
-                    elevation = if (isPressed) 8.dp else 22.dp,
-                    shape = CircleShape,
-                    ambientColor = LiquidRubyEmergency.copy(alpha = 0.65f),
-                    spotColor = LiquidRubyEmergency
-                )
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(
+                        colors = if (isActive) listOf(
+                            Color(0xFFFF859B),
+                            Color(0xFFFF1744),
+                            Color(0xFFD50000),
+                            Color(0xFF8B0000)
+                        ) else listOf(
                             Color(0xFFFF5277),
                             LiquidRubyEmergency,
                             Color(0xFFB91C1C),
@@ -1078,11 +1127,6 @@ fun LiquidGlassSOSButton(
                         ),
                         center = Offset(0.35f, 0.35f)
                     )
-                )
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -1091,8 +1135,8 @@ fun LiquidGlassSOSButton(
                 drawCircle(
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.65f),
-                            Color.White.copy(alpha = 0.15f),
+                            Color.White.copy(alpha = 0.70f),
+                            Color.White.copy(alpha = 0.20f),
                             Color.Transparent
                         ),
                         startY = 0f,
@@ -1103,9 +1147,9 @@ fun LiquidGlassSOSButton(
                 )
 
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.45f),
+                    color = Color.White.copy(alpha = 0.55f),
                     radius = size.width * 0.49f,
-                    style = Stroke(width = 1.5.dp.toPx())
+                    style = Stroke(width = 1.6.dp.toPx())
                 )
             }
 
@@ -1114,15 +1158,15 @@ fun LiquidGlassSOSButton(
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Warning,
+                    imageVector = if (isActive) Icons.Filled.NotificationsActive else Icons.Filled.Warning,
                     contentDescription = "Emergency SOS",
                     tint = Color.White,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(38.dp)
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "EMERGENCY",
-                    color = Color.White.copy(alpha = 0.9f),
+                    text = if (isActive) "ACTIVE" else "EMERGENCY",
+                    color = Color.White.copy(alpha = 0.95f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.8.sp
@@ -1135,10 +1179,10 @@ fun LiquidGlassSOSButton(
                     letterSpacing = 2.5.sp
                 )
                 Text(
-                    text = "HOLD OR TAP",
-                    color = Color.White.copy(alpha = 0.75f),
+                    text = if (isActive) "TAP TO CANCEL" else "TAP TO TRIGGER",
+                    color = Color.White.copy(alpha = 0.85f),
                     fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

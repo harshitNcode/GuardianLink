@@ -12,6 +12,7 @@ class TelemetryCreate(BaseModel):
     sos: Optional[bool] = False
     heart_rate: Optional[int] = Field(72, example=72, description="Heart rate in BPM")
     temperature: Optional[float] = Field(36.6, example=36.6, description="Body temperature in Celsius")
+    humidity: Optional[float] = Field(50.0, example=50.0, description="Relative humidity percentage")
 
 
 class TelemetryResponse(BaseModel):
@@ -24,10 +25,16 @@ class TelemetryResponse(BaseModel):
     sos: bool
     heart_rate: Optional[int] = None
     temperature: Optional[float] = None
+    humidity: Optional[float] = None
     timestamp: datetime
 
     class Config:
         from_attributes = True
+
+
+class LocationUpdate(BaseModel):
+    latitude: float = Field(..., ge=-90.0, le=90.0, example=28.6139)
+    longitude: float = Field(..., ge=-180.0, le=180.0, example=77.2090)
 
 
 class DeviceStatusResponse(BaseModel):
@@ -37,8 +44,9 @@ class DeviceStatusResponse(BaseModel):
     battery: str
     network: str
     sos: bool
-    heart_rate: Optional[int] = 72
-    temperature: Optional[float] = 36.6
+    heart_rate: Optional[int] = None
+    temperature: Optional[float] = None
+    humidity: Optional[float] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     gps: str  # Format: "12.9716, 77.5946" compatible with Android DeviceStatus

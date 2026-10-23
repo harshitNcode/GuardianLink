@@ -19,6 +19,7 @@ class UserRepository {
     fun fetchProfile(uid: String, onResult: (UserProfile) -> Unit) {
         val request = Request.Builder()
             .url("${ApiConfig.HTTP_BASE_URL}/api/v1/users/$uid")
+            .addHeader("Bypass-Tunnel-Reminder", "true")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -68,6 +69,7 @@ class UserRepository {
         val body = payload.toString().toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url("${ApiConfig.HTTP_BASE_URL}/api/v1/users/${profile.uid}")
+            .addHeader("Bypass-Tunnel-Reminder", "true")
             .put(body)
             .build()
 
