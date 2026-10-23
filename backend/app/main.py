@@ -50,25 +50,19 @@ def startup_seed_demo_device():
             dev = Device(
                 device_id="demo_device",
                 name="Guardian Wearable",
-                status="Online",
-                last_latitude=28.6139,
-                last_longitude=77.2090,
-                battery="92%",
-                network="Wi-Fi",
+                status="Waiting for signal",
+                last_latitude=None,
+                last_longitude=None,
+                battery="--",
+                network="--",
                 sos=False,
-                updated_at=datetime.datetime.utcnow()
+                updated_at=None
             )
             db.add(dev)
             db.commit()
-            logger.info("Seeded initial demo_device with coordinates 28.6139, 77.2090")
-        elif not dev.last_latitude or not dev.last_longitude:
-            dev.last_latitude = 28.6139
-            dev.last_longitude = 77.2090
-            dev.status = "Online"
-            db.commit()
-            logger.info("Updated demo_device with default coordinates 28.6139, 77.2090")
+            logger.info("Initialized demo_device (awaiting live phone GPS)")
     except Exception as e:
-        logger.error(f"Error seeding demo device: {e}")
+        logger.error(f"Error initializing demo device: {e}")
     finally:
         db.close()
 

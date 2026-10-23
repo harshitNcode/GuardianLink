@@ -55,6 +55,9 @@ class GeofenceViewModel(application: Application) : AndroidViewModel(application
                 geofences.clear()
                 geofences.addAll(merged)
                 GeofenceLocalStore.saveZones(getApplication(), deviceId, merged)
+            } else {
+                geofences.clear()
+                GeofenceLocalStore.saveZones(getApplication(), deviceId, emptyList())
             }
         }
     }

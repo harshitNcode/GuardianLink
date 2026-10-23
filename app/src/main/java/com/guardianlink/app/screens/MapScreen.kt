@@ -318,8 +318,9 @@ fun MapScreen(
             if (distanceLineRef == null) {
                 val line = Polyline(mapView).apply {
                     setPoints(listOf(myLocationPoint!!, devicePoint))
-                    outlinePaint.color = android.graphics.Color.rgb(0, 229, 255) // Electric Cyan
-                    outlinePaint.strokeWidth = 7f
+                    outlinePaint.color = android.graphics.Color.rgb(255, 235, 59) // Bold Neon Yellow
+                    outlinePaint.strokeWidth = 14f
+                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                     title = "Distance: $distText"
                 }
                 distanceLineRef = line
@@ -327,8 +328,9 @@ fun MapScreen(
             } else {
                 distanceLineRef?.apply {
                     setPoints(listOf(myLocationPoint!!, devicePoint))
-                    outlinePaint.color = android.graphics.Color.rgb(0, 229, 255)
-                    outlinePaint.strokeWidth = 7f
+                    outlinePaint.color = android.graphics.Color.rgb(255, 235, 59) // Bold Neon Yellow
+                    outlinePaint.strokeWidth = 14f
+                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                     title = "Distance: $distText"
                 }
                 if (!mapView.overlays.contains(distanceLineRef)) {
@@ -560,7 +562,7 @@ fun MapScreen(
         }
 
         // Update wearable live position marker
-        if (lat != null && lng != null) {
+        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
             val geoPoint = GeoPoint(lat, lng)
             val beaconDrawable = ContextCompat.getDrawable(
                 context,
@@ -588,6 +590,12 @@ fun MapScreen(
 
             if (!geofenceViewModel.isDrawingMode) {
                 mapView.controller.animateTo(geoPoint)
+            }
+        } else {
+            // Remove device marker if no valid location exists yet
+            if (deviceMarkerRef != null) {
+                mapView.overlays.remove(deviceMarkerRef)
+                deviceMarkerRef = null
             }
         }
 
@@ -632,8 +640,10 @@ fun MapScreen(
 
                     val initialPoint = if (status.hasValidLocation) {
                         GeoPoint(status.latitude!!, status.longitude!!)
+                    } else if (myLocationPoint != null) {
+                        myLocationPoint!!
                     } else {
-                        GeoPoint(28.6129, 77.2295)
+                        GeoPoint(16.5062, 80.6480)
                     }
                     controller.setCenter(initialPoint)
 

@@ -483,6 +483,7 @@ fun ProfileScreen(
                         viewModel.updateProfile(updated)
                         AuthPreference.setCallMeBotKey(context, settingsCallMeBotKey)
                         AuthPreference.setServerHost(context, settingsServerHost)
+                        com.guardianlink.app.viewmodel.DeviceViewModel.activeDeviceId = settingsDeviceId.trim().ifBlank { "demo_device" }
                         showSettingsSheet = false
                         Toast.makeText(context, "Profile & settings saved successfully", Toast.LENGTH_SHORT).show()
                     },

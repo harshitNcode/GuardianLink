@@ -12,8 +12,13 @@ import kotlinx.coroutines.launch
 
 class DeviceViewModel : ViewModel() {
 
+    companion object {
+        var activeDeviceId: String = "demo_device"
+    }
+
     private val repository = DeviceRepository()
-    private val deviceId = "demo_device"
+    val deviceId: String
+        get() = activeDeviceId
 
     private val _status = MutableStateFlow(DeviceStatus())
     val status: StateFlow<DeviceStatus> = _status
@@ -28,7 +33,6 @@ class DeviceViewModel : ViewModel() {
         }
 
         // Active 2-second real-time telemetry polling loop
-        // Continuously fetches live ESP32 data from the backend without depending on fragile WebSockets
         viewModelScope.launch {
             while (true) {
                 delay(2000)

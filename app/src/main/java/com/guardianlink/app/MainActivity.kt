@@ -18,6 +18,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.guardianlink.app.data.ApiConfig.HOST = AuthPreference.getServerHost(this)
+        com.guardianlink.app.viewmodel.DeviceViewModel.activeDeviceId = AuthPreference.getDeviceId(this)
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
