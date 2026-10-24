@@ -10,9 +10,9 @@ class TelemetryCreate(BaseModel):
     battery: Optional[str] = "95%"
     network: Optional[str] = "Wi-Fi"
     sos: Optional[bool] = False
-    heart_rate: Optional[int] = Field(72, example=72, description="Heart rate in BPM")
-    temperature: Optional[float] = Field(36.6, example=36.6, description="Body temperature in Celsius")
-    humidity: Optional[float] = Field(50.0, example=50.0, description="Relative humidity percentage")
+    heart_rate: Optional[int] = Field(None, example=72, description="Heart rate in BPM")
+    temperature: Optional[float] = Field(None, example=36.6, description="Body temperature in Celsius")
+    humidity: Optional[float] = Field(None, example=50.0, description="Relative humidity percentage")
 
 
 class TelemetryResponse(BaseModel):
