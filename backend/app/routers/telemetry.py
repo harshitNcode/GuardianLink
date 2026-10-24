@@ -89,6 +89,7 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
 
 
 @router.post("", response_model=DeviceStatusResponse, status_code=201)
+@router.post("/", response_model=DeviceStatusResponse, status_code=201)
 async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_db)):
     """
     Ingest real-time telemetry from ESP32 wearable device.

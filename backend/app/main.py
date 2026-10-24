@@ -5,6 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.routers import telemetry_router, geofence_router, alerts_router, contacts_router, auth_router
+from app.routers.telemetry import ingest_telemetry
+from app.schemas.telemetry import TelemetryCreate, DeviceStatusResponse
+from app.database import get_db
+from sqlalchemy.orm import Session
+from fastapi import Depends
 from app.services.websocket_manager import manager as ws_manager
 
 logging.basicConfig(level=logging.INFO)
@@ -105,6 +110,14 @@ def root():
         "docs": "/docs",
         "websocket_endpoint": "/ws/devices/{device_id}"
     }
+
+
+@app.post("/", response_model=DeviceStatusResponse, status_code=201)
+@app.post("/telemetry", response_model=DeviceStatusResponse, status_code=201)
+@app.post("/api/telemetry", response_model=DeviceStatusResponse, status_code=201)
+async def root_telemetry_fallback(payload: TelemetryCreate, db: Session = Depends(get_db)):
+    """Fallback handler so ESP32 never receives 404 even if path is omitted."""
+    return await ingest_telemetry(payload, db)
 
 
 @app.get("/health")

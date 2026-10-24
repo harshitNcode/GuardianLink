@@ -673,8 +673,41 @@ void drawOLED()
 }
 
 // ============================================================================
-// WI-FI CONNECTION
+// WI-FI CONNECTION & RECONNECT MONITOR
 // ============================================================================
+bool wasWifiConnected = false;
+
+void maintainWiFi()
+{
+  bool isConnected = (WiFi.status() == WL_CONNECTED);
+
+  if (isConnected && !wasWifiConnected)
+  {
+    wasWifiConnected = true;
+    Serial.println("\n[Wi-Fi] Connected / Reconnected successfully!");
+    Serial.print("[Wi-Fi] Local IP: ");
+    Serial.println(WiFi.localIP());
+
+    setRGB(false, true, false); // Green
+    beep(2, 60, 50);            // 2 cheerful confirmation beeps whenever connected or reconnected!
+  }
+  else if (!isConnected && wasWifiConnected)
+  {
+    wasWifiConnected = false;
+    Serial.println("\n[Wi-Fi] Connection lost! Waiting for reconnect...");
+    setRGB(false, false, true); // Blue while reconnecting
+  }
+  else if (!isConnected && !wasWifiConnected)
+  {
+    static unsigned long lastReconnectAttempt = 0;
+    if (millis() - lastReconnectAttempt >= 8000)
+    {
+      lastReconnectAttempt = millis();
+      WiFi.reconnect();
+    }
+  }
+}
+
 void connectToWiFi()
 {
   Serial.print("\n[Wi-Fi] Connecting to: ");
@@ -695,6 +728,7 @@ void connectToWiFi()
 
   if (WiFi.status() == WL_CONNECTED)
   {
+    wasWifiConnected = true;
     Serial.println("\n[Wi-Fi] Connected successfully!");
     Serial.print("[Wi-Fi] Local IP: ");
     Serial.println(WiFi.localIP());
@@ -881,21 +915,24 @@ void setup()
 // ============================================================================
 void loop()
 {
-  // 1. High-frequency pulse beat sampling (must run rapidly on every loop cycle)
+  // 1. Maintain Wi-Fi state & beep audio feedback whenever connected/reconnected
+  maintainWiFi();
+
+  // 2. High-frequency pulse beat sampling (must run rapidly on every loop cycle)
   processHeartRate();
   handleFingerDebug();
 
-  // 2. Periodic DHT22 sensor readings
+  // 3. Periodic DHT22 sensor readings
   readDHT22();
 
-  // 3. Update OLED Carousel Display
+  // 4. Update OLED Carousel Display
   drawOLED();
 
-  // 4. Update RGB status LED
+  // 5. Update RGB status LED
   updateRGBStatus();
 
-  // 5. Periodic telemetry transmission to GuardianLink backend
-  // Only transmit during idle/standby — NEVER during the active 12s test
+  // 6. Periodic telemetry transmission to GuardianLink backend
+  // Only transmit during idle/standby — NEVER during the active 15s test
   // so MAX30102 optical sampling gets 100% of CPU cycles with zero latency!
   if (hrState != HR_MEASURING)
   {
