@@ -49,13 +49,26 @@ object GeofenceLocalStore {
             val jsonArray = JSONArray(jsonStr)
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.getJSONObject(i)
+                val zoneName = item.optString("name", "Safe Zone")
+                val centerLat = item.optDouble("center_latitude", 0.0)
+
+                // Purge any legacy dummy Delhi safe zones
+                if (zoneName.contains("India Gate", ignoreCase = true) ||
+                    zoneName.contains("Rajpath", ignoreCase = true) ||
+                    zoneName.contains("Purana", ignoreCase = true) ||
+                    zoneName.contains("Test Zone", ignoreCase = true) ||
+                    Math.abs(centerLat - 28.61) < 0.05
+                ) {
+                    continue
+                }
+
                 list.add(
                     GeofenceZone(
                         id = item.optInt("id", 0),
                         deviceId = item.optString("device_id", deviceId),
                         userId = item.optString("user_id", "demo_user"),
-                        name = item.optString("name", "Safe Zone"),
-                        centerLatitude = item.optDouble("center_latitude", 0.0),
+                        name = zoneName,
+                        centerLatitude = centerLat,
                         centerLongitude = item.optDouble("center_longitude", 0.0),
                         radiusMeters = item.optDouble("radius_meters", 500.0),
                         polygonWkt = if (item.isNull("polygon_wkt")) null else item.optString("polygon_wkt"),

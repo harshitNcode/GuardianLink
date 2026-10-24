@@ -43,8 +43,17 @@ def startup_seed_demo_device():
     import datetime
     from app.database import SessionLocal
     from app.models.device import Device
+    from app.models.geofence import GeofenceZone
     db = SessionLocal()
     try:
+        # 1. Permanently remove any legacy Delhi dummy geofences
+        db.query(GeofenceZone).filter(
+            GeofenceZone.name.like("%India Gate%") |
+            GeofenceZone.name.like("%Rajpath%") |
+            GeofenceZone.name.like("%Purana%") |
+            GeofenceZone.name.like("%Test Zone%")
+        ).delete(synchronize_session=False)
+
         dev = db.query(Device).filter(Device.device_id == "demo_device").first()
         if not dev:
             dev = Device(
@@ -59,8 +68,14 @@ def startup_seed_demo_device():
                 updated_at=None
             )
             db.add(dev)
-            db.commit()
-            logger.info("Initialized demo_device (awaiting live phone GPS)")
+        else:
+            # If coordinates are still pointing to Delhi, reset to None
+            if dev.last_latitude and abs(dev.last_latitude - 28.6139) < 0.05:
+                dev.last_latitude = None
+                dev.last_longitude = None
+                dev.status = "Waiting for signal"
+        db.commit()
+        logger.info("Startup initialized: Delhi coordinates and dummy safe zones purged")
     except Exception as e:
         logger.error(f"Error initializing demo device: {e}")
     finally:

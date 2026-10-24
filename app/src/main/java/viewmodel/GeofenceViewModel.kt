@@ -34,19 +34,32 @@ class GeofenceViewModel(application: Application) : AndroidViewModel(application
 
     init {
         // 1. Immediately load all locally saved safe zones from SharedPreferences
-        val cached = GeofenceLocalStore.loadZones(getApplication(), "demo_device")
-        if (cached.isNotEmpty()) {
-            geofences.clear()
-            geofences.addAll(cached)
+        val cached = GeofenceLocalStore.loadZones(getApplication(), "demo_device").filterNot {
+            it.name.contains("India Gate", ignoreCase = true) ||
+            it.name.contains("Rajpath", ignoreCase = true) ||
+            it.name.contains("Purana", ignoreCase = true) ||
+            it.name.contains("Test Zone", ignoreCase = true) ||
+            Math.abs(it.centerLatitude - 28.61) < 0.05
         }
+        geofences.clear()
+        geofences.addAll(cached)
+        GeofenceLocalStore.saveZones(getApplication(), "demo_device", cached)
+
         // 2. Refresh from backend
         loadGeofences()
     }
 
     fun loadGeofences(deviceId: String = "demo_device") {
         repository.fetchGeofences(deviceId) { remoteList ->
-            if (remoteList.isNotEmpty()) {
-                val merged = remoteList.toMutableList()
+            val cleanRemote = remoteList.filterNot {
+                it.name.contains("India Gate", ignoreCase = true) ||
+                it.name.contains("Rajpath", ignoreCase = true) ||
+                it.name.contains("Purana", ignoreCase = true) ||
+                it.name.contains("Test Zone", ignoreCase = true) ||
+                Math.abs(it.centerLatitude - 28.61) < 0.05
+            }
+            if (cleanRemote.isNotEmpty()) {
+                val merged = cleanRemote.toMutableList()
                 for (local in geofences) {
                     if (merged.none { it.id == local.id || (it.name == local.name && it.centerLatitude == local.centerLatitude) }) {
                         merged.add(local)

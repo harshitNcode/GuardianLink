@@ -306,10 +306,8 @@ fun MapScreen(
         }
 
         // 2. Distance Polyline connecting My Location & Connected Device Location
-        val devLat = status.latitude
-        val devLng = status.longitude
-        val hasDeviceLoc = devLat != null && devLng != null && devLat != 0.0 && devLng != 0.0
-        val devicePoint = if (hasDeviceLoc) GeoPoint(devLat!!, devLng!!) else null
+        val hasDeviceLoc = status.hasValidLocation && !status.isDisconnected
+        val devicePoint = if (hasDeviceLoc) GeoPoint(status.latitude!!, status.longitude!!) else null
 
         if (showDistanceLine && showMyLocation && myLocationPoint != null && devicePoint != null) {
             val distM = myLocationPoint!!.distanceToAsDouble(devicePoint)
@@ -1108,44 +1106,67 @@ fun MapScreen(
 
                     // Active Readout Pill: Distance Line or My GPS Active
                     if (showDistanceLine) {
-                        val devLat = status.latitude
-                        val devLng = status.longitude
-                        val hasDevice = devLat != null && devLng != null && devLat != 0.0 && devLng != 0.0
+                        val hasDevice = status.hasValidLocation && !status.isDisconnected
                         val myLoc = myLocationPoint
 
                         if (myLoc != null && hasDevice) {
-                            val distM = myLoc.distanceToAsDouble(GeoPoint(devLat!!, devLng!!))
+                            val distM = myLoc.distanceToAsDouble(GeoPoint(status.latitude!!, status.longitude!!))
                             val formatted = if (distM >= 1000) "%.2f km".format(distM / 1000) else "${distM.toInt()} m"
 
                             Surface(
                                 onClick = { mapViewRef?.let { fitBothLocations(it) } },
                                 shape = RoundedCornerShape(16.dp),
-                                color = if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.18f) else PrimaryBlue.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, if (isDarkMode) LiquidNeonCyan.copy(alpha = 0.4f) else PrimaryBlue.copy(alpha = 0.25f))
+                                color = Color(0xFF0F172A).copy(alpha = 0.95f),
+                                border = BorderStroke(1.5.dp, Color(0xFFFFD600))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Route,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFD600),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "📏 $formatted",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFFD600)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "• Fit View",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF0F172A).copy(alpha = 0.92f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Route,
+                                        imageVector = Icons.Default.SensorsOff,
                                         contentDescription = null,
-                                        tint = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
-                                        modifier = Modifier.size(16.dp)
+                                        tint = Color(0xFFFF5252),
+                                        modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "📏 $formatted",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDarkMode) LiquidNeonCyan else PrimaryBlue
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "• Fit",
+                                        text = "Waiting for Phone 2 to connect...",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = if (isDarkMode) Color.White.copy(alpha = 0.8f) else TextSecondary
+                                        color = Color.White
                                     )
                                 }
                             }
@@ -1303,6 +1324,7 @@ fun MapScreen(
                         val phoneLoc = try {
                             lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                                 ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                                ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
                         } catch (_: SecurityException) { null }
 
                         if (phoneLoc != null) {
@@ -1312,11 +1334,8 @@ fun MapScreen(
                                 it.controller.animateTo(myLocationPoint!!)
                             }
                             android.widget.Toast.makeText(context, "Centered on your location", android.widget.Toast.LENGTH_SHORT).show()
-                        } else if (status.hasValidLocation) {
-                            mapViewRef?.controller?.animateTo(GeoPoint(status.latitude!!, status.longitude!!))
-                            android.widget.Toast.makeText(context, "Centered on wearable device", android.widget.Toast.LENGTH_SHORT).show()
                         } else {
-                            android.widget.Toast.makeText(context, "Searching for GPS signal...", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "Acquiring your phone's GPS...", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         locationPermissionLauncher.launch(

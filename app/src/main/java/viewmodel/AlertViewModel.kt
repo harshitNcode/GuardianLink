@@ -46,7 +46,7 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerSOS(onComplete: (() -> Unit)? = null) {
-        val timeNow = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+        val timeNow = java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
         val instantAlert = Alert(
             title = "Emergency SOS Triggered",
             time = timeNow,
@@ -65,7 +65,7 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelSOS(onComplete: (() -> Unit)? = null) {
-        val timeNow = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+        val timeNow = java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
         val instantAlert = Alert(
             title = "Emergency SOS Stood Down (Resolved)",
             time = timeNow,
@@ -81,6 +81,16 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             refresh()
             onComplete?.invoke()
         }
+    }
+
+    fun deleteAlert(alert: Alert) {
+        // SOS alerts are critical emergency records and cannot be deleted
+        if (alert.type == "danger" || alert.title.contains("SOS", ignoreCase = true)) {
+            return
+        }
+        val updated = _sharedAlerts.value.filterNot { it.title == alert.title && it.time == alert.time }
+        _sharedAlerts.value = updated
+        AlertLocalStore.saveAlerts(getApplication(), updated)
     }
 
     fun refresh() {

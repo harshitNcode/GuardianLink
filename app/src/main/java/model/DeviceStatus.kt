@@ -28,7 +28,15 @@ data class DeviceStatus(
         get() = rawLongitude ?: gps.split(",").getOrNull(1)?.trim()?.toDoubleOrNull()
 
     val hasValidLocation: Boolean
-        get() = latitude != null && longitude != null && latitude != 0.0 && longitude != 0.0
+        get() {
+            val lat = latitude
+            val lon = longitude
+            if (lat == null || lon == null || lat == 0.0 || lon == 0.0) return false
+            // Discard any dummy Delhi test coordinates
+            if (Math.abs(lat - 28.6139) < 0.02 && Math.abs(lon - 77.2090) < 0.02) return false
+            if (Math.abs(lat - 28.6129) < 0.02 && Math.abs(lon - 77.2295) < 0.02) return false
+            return true
+        }
 
     val displayGps: String
         get() {

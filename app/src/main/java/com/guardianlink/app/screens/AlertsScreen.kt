@@ -145,22 +145,6 @@ fun AlertsScreen(
                             )
                         }
                     }
-
-                    if (alerts.isNotEmpty()) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = LiquidRubyEmergency.copy(alpha = 0.2f),
-                            border = BorderStroke(1.dp, LiquidRubyEmergency.copy(alpha = 0.5f))
-                        ) {
-                            Text(
-                                text = "${alerts.size} Active",
-                                color = if (isDark) Color.White else LiquidRubyEmergency,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
                 }
             }
 
@@ -225,6 +209,9 @@ fun AlertsScreen(
                             onAcknowledge = {
                                 if (isAcked) acknowledgedAlerts.remove(alertKey)
                                 else acknowledgedAlerts.add(alertKey)
+                            },
+                            onDelete = {
+                                alertViewModel.deleteAlert(alert)
                             }
                         )
                     }
@@ -239,7 +226,8 @@ private fun LiquidAlertCard(
     alert: Alert,
     isAcknowledged: Boolean,
     isDark: Boolean,
-    onAcknowledge: () -> Unit
+    onAcknowledge: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val (icon, badgeColor) = when (alert.type) {
         "danger" -> Icons.Default.Warning to LiquidRubyEmergency
@@ -247,6 +235,8 @@ private fun LiquidAlertCard(
         "success" -> Icons.Default.CheckCircle to LiquidNeonGreen
         else -> Icons.Default.Info to LiquidNeonCyan
     }
+
+    val isSos = alert.type == "danger" || alert.title.contains("SOS", ignoreCase = true)
 
     LiquidGlassCard(
         modifier = Modifier.fillMaxWidth(),
@@ -293,18 +283,50 @@ private fun LiquidAlertCard(
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
-            IconButton(
-                onClick = onAcknowledge,
-                modifier = Modifier.size(38.dp)
-            ) {
-                Icon(
-                    imageVector = if (isAcknowledged) Icons.Default.CheckCircle else Icons.Default.CheckCircleOutline,
-                    contentDescription = "Acknowledge",
-                    tint = if (isAcknowledged) LiquidNeonGreen else (if (isDark) Color.White.copy(alpha = 0.4f) else OfflineGray),
-                    modifier = Modifier.size(24.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onAcknowledge,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isAcknowledged) Icons.Default.CheckCircle else Icons.Default.CheckCircleOutline,
+                        contentDescription = "Acknowledge",
+                        tint = if (isAcknowledged) LiquidNeonGreen else (if (isDark) Color.White.copy(alpha = 0.4f) else OfflineGray),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                if (!isSos) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Delete Alert",
+                            tint = if (isDark) Color.White.copy(alpha = 0.45f) else Color.Gray,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(LiquidRubyEmergency.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "SOS Protected",
+                            tint = LiquidRubyEmergency,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
             }
         }
     }

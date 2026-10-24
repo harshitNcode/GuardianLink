@@ -22,7 +22,7 @@ async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
     - Broadcasts emergency state to Android via WebSocket
     - Dispatches emergency alert
     """
-    time_str = datetime.datetime.now().strftime("%I:%M %p")
+    time_str = datetime.datetime.now().strftime("%d %b, %I:%M %p")
     alert = Alert(
         user_id=req.user_id,
         device_id=req.device_id,
@@ -108,7 +108,7 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
     - Creates a persistent Alert log: 'Emergency SOS Stood Down (Resolved)'
     - Broadcasts updated status over WebSocket to all Android apps
     """
-    time_str = datetime.datetime.now().strftime("%I:%M %p")
+    time_str = datetime.datetime.now().strftime("%d %b, %I:%M %p")
     alert = Alert(
         user_id=req.user_id,
         device_id=req.device_id,
