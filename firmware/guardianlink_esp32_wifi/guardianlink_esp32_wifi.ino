@@ -101,7 +101,7 @@ unsigned long lastRGBBlinkToggle = 0;
 const unsigned long RGB_BLINK_INTERVAL = 150;
 
 // ============================================================================
-// 5. ADAPTIVE HEART RATE DETECTION & 20-SECOND CLINICAL CYCLE
+// 5. ADAPTIVE HEART RATE DETECTION & 12-SECOND CLINICAL CYCLE
 // ============================================================================
 // Finger detection optical threshold (calibrated for human tissue reflectance)
 const long IR_FINGER_THRESHOLD = 15000;
@@ -115,21 +115,21 @@ long acSignal = 0;              // AC cardiac pulsatile signal
 long prevAcSignal = 0;          // Previous AC sample
 long acPeakMax = 50;            // Dynamic peak amplitude tracker
 unsigned long lastBeatTime = 0; // Timestamp of previous detected beat
-int beatCountThisTest = 0;      // Valid beats counted during 20s test
+int beatCountThisTest = 0;      // Valid beats counted during 12s test
 float runningBPM = 0;           // Instantaneous BPM of the latest beat
 float accumulatedBPM = 0;       // Running sum of valid beat BPMs
 float averageBPM = 0;           // Running average BPM
 
 enum HRState {
   HR_IDLE,       // No finger on optical sensor
-  HR_MEASURING,  // Finger placed; 20-second clinical test in progress
-  HR_COMPLETED,  // 20-second test completed with valid result
+  HR_MEASURING,  // Finger placed; 12-second clinical test in progress
+  HR_COMPLETED,  // 12-second test completed with valid result
   HR_FAILED      // Finger removed or unstable contact; prompt retry
 };
 
 HRState hrState = HR_IDLE;
 unsigned long hrStartTime = 0;
-const unsigned long HR_DURATION_MS = 20000; // Exact 20-second test window
+const unsigned long HR_DURATION_MS = 12000; // Optimized 12-second clinical window (prevents finger fatigue)
 unsigned long hrCompleteTime = 0;
 const unsigned long HR_HOLD_MS = 12000;     // Hold result on OLED for 12 seconds
 
@@ -334,7 +334,7 @@ void processHeartRate()
     digitalWrite(BUZZER_PIN, HIGH);
     delay(70);
     digitalWrite(BUZZER_PIN, LOW);
-    Serial.println("\n[MAX30102] >>> Finger placed! Starting 20-second clinical heart rate test... <<<");
+    Serial.println("\n[MAX30102] >>> Finger placed! Starting 12-second clinical heart rate test... <<<");
   }
   else if (hrState == HR_COMPLETED || hrState == HR_FAILED)
   {
@@ -355,7 +355,7 @@ void processHeartRate()
     }
   }
 
-  // ---------------- CASE 3: MEASURING IN PROGRESS (20s) ----------------
+  // ---------------- CASE 3: MEASURING IN PROGRESS (12s) ----------------
   if (hrState == HR_MEASURING)
   {
     bool beat = detectPulse(irValue);
@@ -367,7 +367,7 @@ void processHeartRate()
     unsigned long elapsed = millis() - hrStartTime;
     if (elapsed >= HR_DURATION_MS)
     {
-      // 20-second test completed!
+      // 12-second test completed!
       hrCompleteTime = millis();
 
       // Clinical validity check: at least 4 valid beats detected and plausible BPM
@@ -378,7 +378,7 @@ void processHeartRate()
         finalBPM = (int)round(averageBPM);
 
         Serial.printf("\n============================================================\n");
-        Serial.printf("  [MAX30102] 20-SECOND TEST COMPLETE!\n");
+        Serial.printf("  [MAX30102] 12-SECOND TEST COMPLETE!\n");
         Serial.printf("  Valid Beats: %d | Real Heart Rate: %d BPM\n", beatCountThisTest, finalBPM);
         Serial.printf("============================================================\n\n");
 
@@ -485,10 +485,10 @@ void drawOLED()
       unsigned long elapsed = millis() - hrStartTime;
       int secLeft = (int)((HR_DURATION_MS - elapsed) / 1000) + 1;
       if (secLeft < 0) secLeft = 0;
-      if (secLeft > 20) secLeft = 20;
+      if (secLeft > 12) secLeft = 12;
 
       display.setCursor(0, 13);
-      display.print("MEASURING (20 SEC)");
+      display.print("MEASURING (12 SEC)");
 
       // Countdown timer
       display.setTextSize(2);

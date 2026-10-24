@@ -14,13 +14,16 @@ class DeviceViewModel : ViewModel() {
 
     companion object {
         var activeDeviceId: String = "demo_device"
+        var appContext: android.content.Context? = null
     }
 
     private val repository = DeviceRepository()
     val deviceId: String
         get() = activeDeviceId
 
-    private val _status = MutableStateFlow(DeviceStatus())
+    private val _status = MutableStateFlow(
+        appContext?.let { com.guardianlink.app.util.AuthPreference.getCachedDeviceStatus(it) } ?: DeviceStatus()
+    )
     val status: StateFlow<DeviceStatus> = _status
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -45,7 +48,7 @@ class DeviceViewModel : ViewModel() {
 
     private fun mergeStatusWithCache(updated: DeviceStatus) {
         _status.update { prev ->
-            updated.copy(
+            val merged = updated.copy(
                 // Preserve previous valid vitals if the new packet is zero or null (e.g. disconnected)
                 heartRate = if (updated.heartRate > 0) updated.heartRate else prev.heartRate,
                 temperature = if (updated.temperature > 0f) updated.temperature else prev.temperature,
@@ -56,6 +59,10 @@ class DeviceViewModel : ViewModel() {
                 rawLongitude = updated.rawLongitude ?: prev.rawLongitude,
                 lastUpdatedTimestamp = if (updated.lastUpdatedTimestamp > 0L) updated.lastUpdatedTimestamp else prev.lastUpdatedTimestamp
             )
+            appContext?.let { ctx ->
+                com.guardianlink.app.util.AuthPreference.saveCachedDeviceStatus(ctx, merged)
+            }
+            merged
         }
     }
 

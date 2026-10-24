@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         com.guardianlink.app.data.ApiConfig.HOST = AuthPreference.getServerHost(this)
         com.guardianlink.app.viewmodel.DeviceViewModel.activeDeviceId = AuthPreference.getDeviceId(this)
+        com.guardianlink.app.viewmodel.DeviceViewModel.appContext = applicationContext
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current

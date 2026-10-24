@@ -19,7 +19,7 @@ def get_current_ist_time_str() -> str:
     return datetime.datetime.now(IST).strftime("%d %b, %I:%M %p")
 
 
-def format_device_status(device: Device) -> dict:
+def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
     lat = device.last_latitude
     lon = device.last_longitude
 
@@ -38,6 +38,39 @@ def format_device_status(device: Device) -> dict:
         if elapsed > 40 and not device.sos:
             status_str = "Offline"
 
+    # Always preserve previous live data if current field is empty/zero
+    hr = device.heart_rate
+    temp = device.temperature
+    hum = device.humidity
+
+    if db is not None:
+        if hr is None or hr <= 0:
+            past_hr = db.query(TelemetryLog.heart_rate).filter(
+                TelemetryLog.device_id == device.device_id,
+                TelemetryLog.heart_rate.isnot(None),
+                TelemetryLog.heart_rate > 0
+            ).order_by(TelemetryLog.timestamp.desc()).first()
+            if past_hr and past_hr[0]:
+                hr = past_hr[0]
+
+        if temp is None or temp <= 0:
+            past_temp = db.query(TelemetryLog.temperature).filter(
+                TelemetryLog.device_id == device.device_id,
+                TelemetryLog.temperature.isnot(None),
+                TelemetryLog.temperature > 0
+            ).order_by(TelemetryLog.timestamp.desc()).first()
+            if past_temp and past_temp[0]:
+                temp = past_temp[0]
+
+        if hum is None or hum <= 0:
+            past_hum = db.query(TelemetryLog.humidity).filter(
+                TelemetryLog.device_id == device.device_id,
+                TelemetryLog.humidity.isnot(None),
+                TelemetryLog.humidity > 0
+            ).order_by(TelemetryLog.timestamp.desc()).first()
+            if past_hum and past_hum[0]:
+                hum = past_hum[0]
+
     return {
         "device_id": device.device_id,
         "name": device.name,
@@ -45,9 +78,9 @@ def format_device_status(device: Device) -> dict:
         "battery": device.battery,
         "network": device.network,
         "sos": device.sos,
-        "heart_rate": device.heart_rate,
-        "temperature": device.temperature,
-        "humidity": device.humidity,
+        "heart_rate": hr,
+        "temperature": temp,
+        "humidity": hum,
         "latitude": lat,
         "longitude": lon,
         "gps": gps_str,
@@ -201,7 +234,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         db.commit()
 
     # 5. Broadcast to connected WebSocket clients (Android app)
-    status_dict = format_device_status(device)
+    status_dict = format_device_status(device, db)
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
     if payload.device_id != target_device_id:
         await ws_manager.broadcast_to_device(payload.device_id, status_dict)
@@ -285,7 +318,7 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
                         longitude=payload.longitude
                     )
 
-    status_dict = format_device_status(device)
+    status_dict = format_device_status(device, db)
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
     return DeviceStatusResponse(**status_dict)
 
@@ -308,7 +341,7 @@ def get_latest_device_status(device_id: str, db: Session = Depends(get_db)):
             gps="--",
             updated_at=None
         )
-    return DeviceStatusResponse(**format_device_status(device))
+    return DeviceStatusResponse(**format_device_status(device, db))
 
 
 @router.get("/{device_id}/history", response_model=List[TelemetryResponse])

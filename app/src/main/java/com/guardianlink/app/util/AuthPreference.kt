@@ -114,4 +114,55 @@ object AuthPreference {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
     }
+
+    private const val KEY_CACHED_HEART_RATE = "cached_heart_rate"
+    private const val KEY_CACHED_TEMP = "cached_temp"
+    private const val KEY_CACHED_HUMIDITY = "cached_humidity"
+    private const val KEY_CACHED_BATTERY = "cached_battery"
+    private const val KEY_CACHED_GPS = "cached_gps"
+    private const val KEY_CACHED_LAT = "cached_lat"
+    private const val KEY_CACHED_LON = "cached_lon"
+    private const val KEY_CACHED_TIMESTAMP = "cached_timestamp"
+
+    fun saveCachedDeviceStatus(context: Context, status: com.guardianlink.app.model.DeviceStatus) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        if (status.heartRate > 0) editor.putInt(KEY_CACHED_HEART_RATE, status.heartRate)
+        if (status.temperature > 0f) editor.putFloat(KEY_CACHED_TEMP, status.temperature)
+        if (status.humidity > 0f) editor.putFloat(KEY_CACHED_HUMIDITY, status.humidity)
+        if (status.battery.isNotBlank() && status.battery != "--") editor.putString(KEY_CACHED_BATTERY, status.battery)
+        if (status.gps.isNotBlank() && status.gps != "--") editor.putString(KEY_CACHED_GPS, status.gps)
+        if (status.rawLatitude != null) editor.putLong(KEY_CACHED_LAT, java.lang.Double.doubleToRawLongBits(status.rawLatitude))
+        if (status.rawLongitude != null) editor.putLong(KEY_CACHED_LON, java.lang.Double.doubleToRawLongBits(status.rawLongitude))
+        if (status.lastUpdatedTimestamp > 0L) editor.putLong(KEY_CACHED_TIMESTAMP, status.lastUpdatedTimestamp)
+        editor.apply()
+    }
+
+    fun getCachedDeviceStatus(context: Context): com.guardianlink.app.model.DeviceStatus {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val hr = prefs.getInt(KEY_CACHED_HEART_RATE, 0)
+        val temp = prefs.getFloat(KEY_CACHED_TEMP, 0f)
+        val hum = prefs.getFloat(KEY_CACHED_HUMIDITY, 0f)
+        val bat = prefs.getString(KEY_CACHED_BATTERY, "--") ?: "--"
+        val gps = prefs.getString(KEY_CACHED_GPS, "--") ?: "--"
+        val latBits = prefs.getLong(KEY_CACHED_LAT, 0L)
+        val lonBits = prefs.getLong(KEY_CACHED_LON, 0L)
+        val lat = if (latBits != 0L) java.lang.Double.longBitsToDouble(latBits) else null
+        val lon = if (lonBits != 0L) java.lang.Double.longBitsToDouble(lonBits) else null
+        val ts = prefs.getLong(KEY_CACHED_TIMESTAMP, 0L)
+
+        return com.guardianlink.app.model.DeviceStatus(
+            battery = bat,
+            gps = gps,
+            network = "Wi-Fi",
+            device = "Offline",
+            sos = false,
+            heartRate = hr,
+            temperature = temp,
+            humidity = hum,
+            rawLatitude = lat,
+            rawLongitude = lon,
+            lastUpdatedTimestamp = ts
+        )
+    }
 }
