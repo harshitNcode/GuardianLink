@@ -110,11 +110,14 @@ long irValue = 0;
 unsigned long lastIRDebug = 0;
 
 // Dynamic DC filter & Peak detection variables
-float irDC = 0;                 // Exponential moving average (DC baseline)
-long acSignal = 0;              // AC cardiac pulsatile signal
+float irSmooth = 0;             // Low-pass filtered IR signal (suppresses high-frequency optical noise)
+float irDC = 0;                 // Exponential moving average (DC baseline tracker)
+long acSignal = 0;              // AC cardiac pulsatile signal (irSmooth - irDC)
 long prevAcSignal = 0;          // Previous AC sample
-long acPeakMax = 50;            // Dynamic peak amplitude tracker
+long acPeakMax = 80;            // Dynamic peak amplitude tracker
 unsigned long lastBeatTime = 0; // Timestamp of previous detected beat
+unsigned long lastInterval = 0; // Most recent inter-beat interval (ms)
+bool isArmed = true;            // Hysteresis arming flag (must cross below zero before re-arming)
 int beatCountThisTest = 0;      // Valid beats counted during 12s test
 float runningBPM = 0;           // Instantaneous BPM of the latest beat
 float accumulatedBPM = 0;       // Running sum of valid beat BPMs
@@ -196,7 +199,7 @@ void updateRGBStatus()
 }
 
 // ============================================================================
-// ADAPTIVE BEAT DETECTION (REPLACES FRAGILE checkForBeat)
+// CLINICAL ADAPTIVE BEAT DETECTION (IMMUNE TO DICROTIC NOTCH ~160 BPM DOUBLING)
 // ============================================================================
 bool detectPulse(long sample)
 {
@@ -205,49 +208,81 @@ bool detectPulse(long sample)
     return false;
   }
 
-  // 1. Initialize DC baseline on first contact
+  // 1. Initialize filters on first contact
   if (irDC == 0)
   {
     irDC = sample;
+    irSmooth = sample;
+    isArmed = true;
+    lastBeatTime = 0;
+    lastInterval = 0;
+    acPeakMax = 80;
     return false;
   }
 
-  // 2. Exponential Moving Average tracks the DC baseline
-  // Follows slow baseline drift (breathing, slight pressure shifts)
-  irDC = (irDC * 0.95f) + (sample * 0.05f);
-  acSignal = (long)(sample - irDC);
+  // 2. Low-pass filter raw sample (reduces sensor noise and 50/60Hz ambient optical jitter)
+  irSmooth = (irSmooth * 0.70f) + (sample * 0.30f);
 
-  // 3. Decay dynamic peak amplitude tracker
-  if (acPeakMax > 30)
+  // 3. Exponential Moving Average tracks the DC baseline (slowly follows baseline drift)
+  irDC = (irDC * 0.95f) + (irSmooth * 0.05f);
+  acSignal = (long)(irSmooth - irDC);
+
+  // 4. Hysteresis arming: signal MUST dip below zero (into diastolic trough)
+  // before the detector arms for the next systolic peak!
+  // This completely prevents double-triggering on the dicrotic notch, which occurs before baseline return!
+  if (acSignal < -10)
   {
-    acPeakMax = (long)(acPeakMax * 0.995f);
+    isArmed = true;
+  }
+
+  // 5. Slowly decay dynamic peak amplitude tracker
+  if (acPeakMax > 50)
+  {
+    acPeakMax = (long)(acPeakMax * 0.992f);
   }
 
   unsigned long now = millis();
   bool beat = false;
 
-  // 4. Adaptive dynamic crest detection:
-  // Must exceed 40% of recent peak amplitude (minimum 25 units)
-  long threshold = (long)(acPeakMax * 0.40f);
-  if (threshold < 25) threshold = 25;
+  // 6. Dynamic Crest Threshold:
+  // Must exceed 60% of recent peak amplitude (minimum 40 ADC counts).
+  // The dicrotic notch is only ~25-35% of peak, so it CANNOT cross 60%!
+  long threshold = (long)(acPeakMax * 0.60f);
+  if (threshold < 40) threshold = 40;
 
-  // Crest condition: AC was above threshold and has turned downward (local peak)
-  if (prevAcSignal > threshold && acSignal < prevAcSignal)
+  // Crest condition: AC was above threshold and has turned downward (local maximum)
+  if (isArmed && prevAcSignal > threshold && acSignal < prevAcSignal)
   {
-    // Physiological Refractory Lockout:
-    // No realistic human heart beats faster than 190 BPM (~315ms interval)
-    // This rejects dicrotic notch reflections and harmonic noise.
-    unsigned long delta = now - lastBeatTime;
-    if (delta >= 315 && delta <= 1600) // 37.5 to 190 BPM range
+    // 7. Physiological Refractory Lockout:
+    // Minimum 480ms interval (maximum 125 BPM).
+    // Also, adaptive lockout: at least 60% of the previous beat interval.
+    // Dicrotic wave occurs at 300-380ms, so it is 100% BLOCKED by this lockout!
+    unsigned long minInterval = 480;
+    if (lastInterval > 0)
+    {
+      unsigned long adaptive = (unsigned long)(lastInterval * 0.60f);
+      if (adaptive > minInterval) minInterval = adaptive;
+    }
+
+    unsigned long delta = (lastBeatTime > 0) ? (now - lastBeatTime) : 0;
+
+    if (lastBeatTime == 0 || delta > 1800)
+    {
+      // First beat after placement or recovery: initialize reference point without counting
+      lastBeatTime = now;
+      isArmed = false;
+      if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
+    }
+    else if (delta >= minInterval && delta <= 1600) // 37.5 to 125 BPM valid range
     {
       float instantBPM = 60000.0f / (float)delta;
 
-      // Update dynamic peak amplitude reference
+      // Update peak tracker
       if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
-      if (acPeakMax > 2500) acPeakMax = 2500; // Clamp against movement spikes
+      if (acPeakMax > 2500) acPeakMax = 2500; // Clamp against violent movement
 
-      // Discard initial contact transient (first 1.5 seconds)
-      if (millis() - hrStartTime > 1500)
+      // Discard initial contact transient (first 2 seconds of placement)
+      if (millis() - hrStartTime > 2000)
       {
         beatCountThisTest++;
         accumulatedBPM += instantBPM;
@@ -256,16 +291,12 @@ bool detectPulse(long sample)
       }
 
       lastBeatTime = now;
+      lastInterval = delta;
+      isArmed = false; // Disarm until signal dips below baseline again!
       beat = true;
 
       Serial.printf("[PULSE] Beat #%d! Interval: %lums | Instant: %.1f BPM | Running Avg: %.1f BPM\n", 
                     beatCountThisTest, delta, instantBPM, averageBPM);
-    }
-    else if (delta > 1600)
-    {
-      // First beat after placement or reset
-      lastBeatTime = now;
-      if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
     }
   }
 
@@ -274,7 +305,7 @@ bool detectPulse(long sample)
 }
 
 // ============================================================================
-// PROCESS MAX30102 - 20-SECOND CLINICAL TEST CYCLE
+// PROCESS MAX30102 - 12-SECOND CLINICAL TEST CYCLE
 // ============================================================================
 void processHeartRate()
 {
@@ -308,9 +339,12 @@ void processHeartRate()
 
     // Reset pulse detector filters
     irDC = 0;
+    irSmooth = 0;
     acSignal = 0;
     prevAcSignal = 0;
     lastBeatTime = 0;
+    lastInterval = 0;
+    isArmed = true;
     runningBPM = 0;
     averageBPM = 0;
     return;
@@ -327,9 +361,12 @@ void processHeartRate()
     runningBPM = 0;
     finalBPM = 0;
     irDC = irValue;
+    irSmooth = irValue;
     prevAcSignal = 0;
     lastBeatTime = 0;
-    acPeakMax = 60;
+    lastInterval = 0;
+    isArmed = true;
+    acPeakMax = 80;
 
     digitalWrite(BUZZER_PIN, HIGH);
     delay(70);
@@ -349,9 +386,12 @@ void processHeartRate()
       runningBPM = 0;
       finalBPM = 0;
       irDC = irValue;
+      irSmooth = irValue;
       prevAcSignal = 0;
       lastBeatTime = 0;
-      acPeakMax = 60;
+      lastInterval = 0;
+      isArmed = true;
+      acPeakMax = 80;
     }
   }
 
@@ -399,6 +439,17 @@ void processHeartRate()
     }
   }
 }
+      {
+        // FAILED: Signal was too faint or noisy. NEVER fake 74 BPM!
+        hrState = HR_FAILED;
+        finalBPM = 0; // Pure 0, never a fake placeholder
+
+        Serial.printf("\n[MAX30102] Test Inconclusive (%d beats detected). Prompting retry.\n\n", beatCountThisTest);
+        beep(1, 250, 0); // 1 longer warning tone
+      }
+    }
+  }
+}
 
 void handleFingerDebug()
 {
@@ -411,7 +462,7 @@ void handleFingerDebug()
       Serial.printf("[MAX30102] IR: %ld | Finger: %s | State: %s\n", 
                     irValue, 
                     fingerPresent ? "YES" : "NO",
-                    hrState == HR_MEASURING ? "MEASURING (20s)" : 
+                    hrState == HR_MEASURING ? "MEASURING (12s)" : 
                     (hrState == HR_COMPLETED ? "COMPLETED" : (hrState == HR_FAILED ? "RETRY" : "IDLE")));
     }
   }
@@ -566,7 +617,7 @@ void drawOLED()
       display.print("NO FINGER");
       display.setTextSize(1);
       display.setCursor(4, 52);
-      display.print("Touch for 20s test");
+      display.print("Touch for 12s test");
     }
   }
   // ---------------- PAGE 1: TEMPERATURE & HUMIDITY ----------------
@@ -816,7 +867,7 @@ void loop()
   updateRGBStatus();
 
   // 5. Periodic telemetry transmission to GuardianLink backend
-  // Only transmit during idle/standby — NEVER during the active 20s test
+  // Only transmit during idle/standby — NEVER during the active 12s test
   // so MAX30102 optical sampling gets 100% of CPU cycles with zero latency!
   if (hrState != HR_MEASURING)
   {
