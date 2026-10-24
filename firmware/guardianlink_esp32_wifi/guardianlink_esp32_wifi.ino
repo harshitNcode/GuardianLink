@@ -110,29 +110,37 @@ long irValue = 0;
 unsigned long lastIRDebug = 0;
 
 // Dynamic DC filter & Peak detection variables
-float irSmooth = 0;             // Low-pass filtered IR signal (suppresses high-frequency optical noise)
-float irDC = 0;                 // Exponential moving average (DC baseline tracker)
-long acSignal = 0;              // AC cardiac pulsatile signal (irSmooth - irDC)
-long prevAcSignal = 0;          // Previous AC sample
-long acPeakMax = 80;            // Dynamic peak amplitude tracker
-unsigned long lastBeatTime = 0; // Timestamp of previous detected beat
-unsigned long lastInterval = 0; // Most recent inter-beat interval (ms)
-bool isArmed = true;            // Hysteresis arming flag (must cross below zero before re-arming)
-int beatCountThisTest = 0;      // Valid beats counted during 12s test
-float runningBPM = 0;           // Instantaneous BPM of the latest beat
-float accumulatedBPM = 0;       // Running sum of valid beat BPMs
-float averageBPM = 0;           // Running average BPM
+unsigned long lastSampleTime = 0; // Hardware-clocked 100Hz sampling interval (10ms)
+float irSmooth = 0;               // Low-pass filtered IR signal (suppresses high-frequency optical noise)
+float irDC = 0;                   // Exponential moving average (DC baseline tracker)
+long acSignal = 0;                // AC cardiac pulsatile signal (irSmooth - irDC)
+long prevAcSignal = 0;            // Previous AC sample
+long acPeakMax = 100;             // Dynamic peak amplitude tracker
+unsigned long lastBeatTime = 0;   // Timestamp of previous detected beat
+unsigned long lastInterval = 0;   // Most recent inter-beat interval (ms)
+bool isArmed = true;              // Hysteresis arming flag (must cross below zero before re-arming)
+
+// Moving Inter-Beat Interval (IBI) history buffer for stable BPM over time
+#define IBI_HISTORY_SIZE 6
+unsigned long ibiHistory[IBI_HISTORY_SIZE] = {0};
+byte ibiCount = 0;
+byte ibiIdx = 0;
+
+int beatCountThisTest = 0;        // Valid beats counted during test
+float runningBPM = 0;             // Window-averaged BPM of recent beats
+float accumulatedBPM = 0;         // Running sum of valid beat BPMs
+float averageBPM = 0;             // Overall test average BPM
 
 enum HRState {
   HR_IDLE,       // No finger on optical sensor
-  HR_MEASURING,  // Finger placed; 12-second clinical test in progress
-  HR_COMPLETED,  // 12-second test completed with valid result
+  HR_MEASURING,  // Finger placed; 15-second clinical test in progress
+  HR_COMPLETED,  // 15-second test completed with valid result
   HR_FAILED      // Finger removed or unstable contact; prompt retry
 };
 
 HRState hrState = HR_IDLE;
 unsigned long hrStartTime = 0;
-const unsigned long HR_DURATION_MS = 12000; // Optimized 12-second clinical window (prevents finger fatigue)
+const unsigned long HR_DURATION_MS = 15000; // 15-second clinical test window
 unsigned long hrCompleteTime = 0;
 const unsigned long HR_HOLD_MS = 12000;     // Hold result on OLED for 12 seconds
 
@@ -208,7 +216,17 @@ bool detectPulse(long sample)
     return false;
   }
 
-  // 1. Initialize filters on first contact
+  unsigned long now = millis();
+
+  // 1. Precise 100Hz sample rate clocking (10ms interval)
+  // Ensures filters and decay rate behave identically over any duration
+  if (now - lastSampleTime < 10)
+  {
+    return false;
+  }
+  lastSampleTime = now;
+
+  // 2. Initialize filters on first contact
   if (irDC == 0)
   {
     irDC = sample;
@@ -216,51 +234,52 @@ bool detectPulse(long sample)
     isArmed = true;
     lastBeatTime = 0;
     lastInterval = 0;
-    acPeakMax = 80;
+    acPeakMax = 120;
+    ibiCount = 0;
+    ibiIdx = 0;
     return false;
   }
 
-  // 2. Low-pass filter raw sample (reduces sensor noise and 50/60Hz ambient optical jitter)
+  // 3. Low-pass filter raw sample (reduces sensor noise and 50/60Hz ambient optical jitter)
   irSmooth = (irSmooth * 0.70f) + (sample * 0.30f);
 
-  // 3. Exponential Moving Average tracks the DC baseline (slowly follows baseline drift)
-  irDC = (irDC * 0.95f) + (irSmooth * 0.05f);
+  // 4. Exponential Moving Average tracks the DC baseline (slowly follows baseline drift)
+  irDC = (irDC * 0.96f) + (irSmooth * 0.04f);
   acSignal = (long)(irSmooth - irDC);
 
-  // 4. Hysteresis arming: signal MUST dip below zero (into diastolic trough)
+  // 5. Hysteresis arming: signal MUST dip below -12 (into diastolic trough)
   // before the detector arms for the next systolic peak!
   // This completely prevents double-triggering on the dicrotic notch, which occurs before baseline return!
-  if (acSignal < -10)
+  if (acSignal < -12)
   {
     isArmed = true;
   }
 
-  // 5. Slowly decay dynamic peak amplitude tracker
-  if (acPeakMax > 50)
+  // 6. Smooth peak decay at 100Hz: only decays ~15% per second (0.9985^100 ≈ 0.86)
+  // Prevents threshold from collapsing into noise floor even during long measurements!
+  if (acPeakMax > 60)
   {
-    acPeakMax = (long)(acPeakMax * 0.992f);
+    acPeakMax = (long)(acPeakMax * 0.9985f);
   }
 
-  unsigned long now = millis();
   bool beat = false;
 
-  // 6. Dynamic Crest Threshold:
-  // Must exceed 60% of recent peak amplitude (minimum 40 ADC counts).
-  // The dicrotic notch is only ~25-35% of peak, so it CANNOT cross 60%!
+  // 7. Dynamic Peak Threshold: 60% of peak amplitude (minimum 45 ADC counts)
+  // Dicrotic wave amplitude is only ~25-35%, so it CANNOT cross 60%!
   long threshold = (long)(acPeakMax * 0.60f);
-  if (threshold < 40) threshold = 40;
+  if (threshold < 45) threshold = 45;
 
   // Crest condition: AC was above threshold and has turned downward (local maximum)
   if (isArmed && prevAcSignal > threshold && acSignal < prevAcSignal)
   {
-    // 7. Physiological Refractory Lockout:
+    // 8. Physiological Refractory Lockout:
     // Minimum 480ms interval (maximum 125 BPM).
-    // Also, adaptive lockout: at least 60% of the previous beat interval.
-    // Dicrotic wave occurs at 300-380ms, so it is 100% BLOCKED by this lockout!
+    // Adaptive: at least 65% of the preceding interval.
+    // Dicrotic wave (at 300-380ms) is 100% BLOCKED by this lockout!
     unsigned long minInterval = 480;
     if (lastInterval > 0)
     {
-      unsigned long adaptive = (unsigned long)(lastInterval * 0.60f);
+      unsigned long adaptive = (unsigned long)(lastInterval * 0.65f);
       if (adaptive > minInterval) minInterval = adaptive;
     }
 
@@ -268,26 +287,40 @@ bool detectPulse(long sample)
 
     if (lastBeatTime == 0 || delta > 1800)
     {
-      // First beat after placement or recovery: initialize reference point without counting
+      // First beat after placement or reset: establish baseline
       lastBeatTime = now;
       isArmed = false;
       if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
     }
-    else if (delta >= minInterval && delta <= 1600) // 37.5 to 125 BPM valid range
+    else if (delta >= minInterval && delta <= 1500) // 40 to 125 BPM valid range
     {
       float instantBPM = 60000.0f / (float)delta;
 
       // Update peak tracker
       if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
-      if (acPeakMax > 2500) acPeakMax = 2500; // Clamp against violent movement
+      if (acPeakMax > 2500) acPeakMax = 2500; // Clamp against movement
+
+      // Store in IBI circular buffer for moving median/filtered average
+      ibiHistory[ibiIdx] = delta;
+      ibiIdx = (ibiIdx + 1) % IBI_HISTORY_SIZE;
+      if (ibiCount < IBI_HISTORY_SIZE) ibiCount++;
 
       // Discard initial contact transient (first 2 seconds of placement)
       if (millis() - hrStartTime > 2000)
       {
         beatCountThisTest++;
-        accumulatedBPM += instantBPM;
+
+        // Calculate moving average from IBI history
+        unsigned long sumIbi = 0;
+        for (byte i = 0; i < ibiCount; i++)
+        {
+          sumIbi += ibiHistory[i];
+        }
+        float avgIbi = (float)sumIbi / (float)ibiCount;
+        runningBPM = 60000.0f / avgIbi;
+
+        accumulatedBPM += runningBPM;
         averageBPM = accumulatedBPM / (float)beatCountThisTest;
-        runningBPM = instantBPM;
       }
 
       lastBeatTime = now;
@@ -295,8 +328,8 @@ bool detectPulse(long sample)
       isArmed = false; // Disarm until signal dips below baseline again!
       beat = true;
 
-      Serial.printf("[PULSE] Beat #%d! Interval: %lums | Instant: %.1f BPM | Running Avg: %.1f BPM\n", 
-                    beatCountThisTest, delta, instantBPM, averageBPM);
+      Serial.printf("[PULSE] Beat #%d! Interval: %lums | Instant: %.1f BPM | Stable BPM: %.1f BPM\n", 
+                    beatCountThisTest, delta, instantBPM, runningBPM);
     }
   }
 
@@ -305,7 +338,7 @@ bool detectPulse(long sample)
 }
 
 // ============================================================================
-// PROCESS MAX30102 - 12-SECOND CLINICAL TEST CYCLE
+// PROCESS MAX30102 - 15-SECOND CLINICAL TEST CYCLE
 // ============================================================================
 void processHeartRate()
 {
@@ -345,6 +378,8 @@ void processHeartRate()
     lastBeatTime = 0;
     lastInterval = 0;
     isArmed = true;
+    ibiCount = 0;
+    ibiIdx = 0;
     runningBPM = 0;
     averageBPM = 0;
     return;
@@ -366,12 +401,14 @@ void processHeartRate()
     lastBeatTime = 0;
     lastInterval = 0;
     isArmed = true;
-    acPeakMax = 80;
+    ibiCount = 0;
+    ibiIdx = 0;
+    acPeakMax = 120;
 
     digitalWrite(BUZZER_PIN, HIGH);
     delay(70);
     digitalWrite(BUZZER_PIN, LOW);
-    Serial.println("\n[MAX30102] >>> Finger placed! Starting 12-second clinical heart rate test... <<<");
+    Serial.println("\n[MAX30102] >>> Finger placed! Starting 15-second clinical heart rate test... <<<");
   }
   else if (hrState == HR_COMPLETED || hrState == HR_FAILED)
   {
@@ -391,11 +428,13 @@ void processHeartRate()
       lastBeatTime = 0;
       lastInterval = 0;
       isArmed = true;
-      acPeakMax = 80;
+      ibiCount = 0;
+      ibiIdx = 0;
+      acPeakMax = 120;
     }
   }
 
-  // ---------------- CASE 3: MEASURING IN PROGRESS (12s) ----------------
+  // ---------------- CASE 3: MEASURING IN PROGRESS (15s) ----------------
   if (hrState == HR_MEASURING)
   {
     bool beat = detectPulse(irValue);
@@ -407,18 +446,18 @@ void processHeartRate()
     unsigned long elapsed = millis() - hrStartTime;
     if (elapsed >= HR_DURATION_MS)
     {
-      // 12-second test completed!
+      // 15-second test completed!
       hrCompleteTime = millis();
 
-      // Clinical validity check: at least 4 valid beats detected and plausible BPM
-      if (beatCountThisTest >= 4 && averageBPM >= 45.0 && averageBPM <= 190.0)
+      // Clinical validity check: at least 5 valid beats detected and plausible BPM
+      if (beatCountThisTest >= 5 && runningBPM >= 45.0 && runningBPM <= 140.0)
       {
         // SUCCESS: Real heart rate captured
         hrState = HR_COMPLETED;
-        finalBPM = (int)round(averageBPM);
+        finalBPM = (int)round(runningBPM);
 
         Serial.printf("\n============================================================\n");
-        Serial.printf("  [MAX30102] 12-SECOND TEST COMPLETE!\n");
+        Serial.printf("  [MAX30102] 15-SECOND TEST COMPLETE!\n");
         Serial.printf("  Valid Beats: %d | Real Heart Rate: %d BPM\n", beatCountThisTest, finalBPM);
         Serial.printf("============================================================\n\n");
 
@@ -428,17 +467,6 @@ void processHeartRate()
         sendTelemetry();
       }
       else
-      {
-        // FAILED: Signal was too faint or noisy. NEVER fake 74 BPM!
-        hrState = HR_FAILED;
-        finalBPM = 0; // Pure 0, never a fake placeholder
-
-        Serial.printf("\n[MAX30102] Test Inconclusive (%d beats detected). Prompting retry.\n\n", beatCountThisTest);
-        beep(1, 250, 0); // 1 longer warning tone
-      }
-    }
-  }
-}
       {
         // FAILED: Signal was too faint or noisy. NEVER fake 74 BPM!
         hrState = HR_FAILED;
@@ -536,10 +564,10 @@ void drawOLED()
       unsigned long elapsed = millis() - hrStartTime;
       int secLeft = (int)((HR_DURATION_MS - elapsed) / 1000) + 1;
       if (secLeft < 0) secLeft = 0;
-      if (secLeft > 12) secLeft = 12;
+      if (secLeft > 15) secLeft = 15;
 
       display.setCursor(0, 13);
-      display.print("MEASURING (12 SEC)");
+      display.print("MEASURING (15 SEC)");
 
       // Countdown timer
       display.setTextSize(2);
@@ -617,7 +645,7 @@ void drawOLED()
       display.print("NO FINGER");
       display.setTextSize(1);
       display.setCursor(4, 52);
-      display.print("Touch for 12s test");
+      display.print("Touch for 15s test");
     }
   }
   // ---------------- PAGE 1: TEMPERATURE & HUMIDITY ----------------
