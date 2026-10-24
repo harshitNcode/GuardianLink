@@ -187,9 +187,22 @@ fun MapScreen(
         }
     }
 
-    // Initialize osmdroid user agent & cache
+    // Initialize osmdroid user agent & cache and acquire current location if permitted
     LaunchedEffect(Unit) {
         Configuration.getInstance().userAgentValue = context.packageName
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasFine || hasCoarse) {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            val loc = try {
+                lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+            } catch (_: SecurityException) { null }
+            if (loc != null) {
+                myLocationPoint = GeoPoint(loc.latitude, loc.longitude)
+            }
+        }
     }
 
     fun getTileSource(style: MapStyle) = when (style) {
@@ -561,8 +574,8 @@ fun MapScreen(
         }
 
         // Update wearable live position marker
-        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-            val geoPoint = GeoPoint(lat, lng)
+        if (status.hasValidLocation) {
+            val geoPoint = GeoPoint(lat!!, lng!!)
             val beaconDrawable = ContextCompat.getDrawable(
                 context,
                 if (status.sos) R.drawable.ic_wearable_pin_sos else R.drawable.ic_wearable_pin
@@ -587,7 +600,7 @@ fun MapScreen(
                 }
             }
 
-            if (!geofenceViewModel.isDrawingMode && !hasAutoCenteredOnDevice && !showMyLocation) {
+            if (!geofenceViewModel.isDrawingMode && !hasAutoCenteredOnDevice && !showMyLocation && myLocationPoint == null) {
                 mapView.controller.animateTo(geoPoint)
                 hasAutoCenteredOnDevice = true
             }
@@ -638,10 +651,10 @@ fun MapScreen(
                     overlays.add(0, touchDragOverlay)
                     overlays.add(1, eventsOverlay)
 
-                    val initialPoint = if (status.hasValidLocation) {
-                        GeoPoint(status.latitude!!, status.longitude!!)
-                    } else if (myLocationPoint != null) {
+                    val initialPoint = if (myLocationPoint != null) {
                         myLocationPoint!!
+                    } else if (status.hasValidLocation) {
+                        GeoPoint(status.latitude!!, status.longitude!!)
                     } else {
                         GeoPoint(16.5062, 80.6480)
                     }

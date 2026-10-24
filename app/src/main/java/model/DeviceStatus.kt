@@ -22,20 +22,23 @@ data class DeviceStatus(
         get() = isDisconnected
 
     val latitude: Double?
-        get() = rawLatitude ?: gps.split(",").getOrNull(0)?.trim()?.toDoubleOrNull()
+        get() {
+            val lat = rawLatitude ?: gps.split(",").getOrNull(0)?.trim()?.toDoubleOrNull()
+            if (lat == null || lat == 0.0) return null
+            if (Math.abs(lat - 28.6) < 0.4) return null
+            return lat
+        }
 
     val longitude: Double?
-        get() = rawLongitude ?: gps.split(",").getOrNull(1)?.trim()?.toDoubleOrNull()
+        get() {
+            val lon = rawLongitude ?: gps.split(",").getOrNull(1)?.trim()?.toDoubleOrNull()
+            if (lon == null || lon == 0.0) return null
+            if (Math.abs(lon - 77.2) < 0.4) return null
+            return lon
+        }
 
     val hasValidLocation: Boolean
-        get() {
-            val lat = latitude
-            val lon = longitude
-            if (lat == null || lon == null || lat == 0.0 || lon == 0.0) return false
-            // Discard any dummy Delhi test coordinates (approx 28.6° N, 77.2° E)
-            if (Math.abs(lat - 28.6) < 0.4 && Math.abs(lon - 77.2) < 0.4) return false
-            return true
-        }
+        get() = latitude != null && longitude != null
 
     val displayGps: String
         get() {

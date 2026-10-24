@@ -79,11 +79,12 @@ def startup_seed_demo_device():
             )
             db.add(demo_dev)
 
-        # 3. Purge dummy test alerts referencing Delhi
+        # 3. Purge dummy test alerts referencing Delhi and dummy Safe Zone Breaches
         db.query(Alert).filter(
             Alert.title.like("%India Gate%") |
             Alert.title.like("%Rajpath%") |
             Alert.title.like("%Purana%") |
+            Alert.title.like("%Safe Zone Breach%") |
             (Alert.latitude.between(28.0, 29.5) & Alert.longitude.between(76.5, 78.0))
         ).delete(synchronize_session=False)
 

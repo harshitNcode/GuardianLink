@@ -32,8 +32,27 @@ object EmergencyDispatcher {
 
         val formattedNumber = if (rawDigits.length == 10) "91$rawDigits" else rawDigits
 
-        val locationUrl = if (latitude != null && longitude != null && latitude != 0.0 && longitude != 0.0) {
-            "https://maps.google.com/?q=$latitude,$longitude"
+        var actualLat = latitude
+        var actualLon = longitude
+        if (actualLat != null && actualLon != null && Math.abs(actualLat - 28.6) < 0.4 && Math.abs(actualLon - 77.2) < 0.4) {
+            actualLat = null
+            actualLon = null
+        }
+        if (actualLat == null || actualLon == null) {
+            try {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                val phoneLoc = lm?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: lm?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    ?: lm?.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER)
+                if (phoneLoc != null) {
+                    actualLat = phoneLoc.latitude
+                    actualLon = phoneLoc.longitude
+                }
+            } catch (_: SecurityException) {}
+        }
+
+        val locationUrl = if (actualLat != null && actualLon != null && actualLat != 0.0 && actualLon != 0.0) {
+            "https://maps.google.com/?q=$actualLat,$actualLon"
         } else {
             "GPS tracker active (Awaiting satellite lock)"
         }

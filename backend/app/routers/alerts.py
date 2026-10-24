@@ -49,35 +49,24 @@ async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
         device.status = "Alert"
         device.updated_at = datetime.datetime.utcnow()
         if req.latitude and req.longitude:
-            device.last_latitude = req.latitude
-            device.last_longitude = req.longitude
+            # Only update device coordinates if not dummy Delhi
+            if not (abs(req.latitude - 28.6) < 0.4 and abs(req.longitude - 77.2) < 0.4):
+                device.last_latitude = req.latitude
+                device.last_longitude = req.longitude
 
     db.commit()
     db.refresh(alert)
 
-    # Evaluate Geofences on SOS so map / breach alerts appear immediately
-    loc_lat = req.latitude or (device.last_latitude if device else None)
-    loc_lon = req.longitude or (device.last_longitude if device else None)
-    if loc_lat and loc_lon:
-        geofence_results = evaluate_geofences(db, req.device_id, loc_lat, loc_lon)
-        for result in geofence_results:
-            if not result.is_inside:
-                map_alert = Alert(
-                    user_id=req.user_id,
-                    device_id=req.device_id,
-                    title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
-                    time=time_str,
-                    type="warning",
-                    latitude=loc_lat,
-                    longitude=loc_lon,
-                    resolved=False
-                )
-                db.add(map_alert)
-        db.commit()
-
     # Broadcast emergency to WebSocket listeners
     if device:
-        gps_str = f"{device.last_latitude}, {device.last_longitude}" if device.last_latitude and device.last_longitude else "--"
+        dev_lat = device.last_latitude
+        dev_lon = device.last_longitude
+        if dev_lat is not None and dev_lon is not None:
+            if abs(dev_lat - 28.6) < 0.4 and abs(dev_lon - 77.2) < 0.4:
+                dev_lat = None
+                dev_lon = None
+        gps_str = f"{dev_lat}, {dev_lon}" if dev_lat and dev_lon else "--"
+
         await ws_manager.broadcast_to_device(req.device_id, {
             "device_id": device.device_id,
             "name": device.name,
@@ -88,8 +77,8 @@ async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
             "heart_rate": device.heart_rate,
             "temperature": device.temperature,
             "humidity": device.humidity,
-            "latitude": device.last_latitude,
-            "longitude": device.last_longitude,
+            "latitude": dev_lat,
+            "longitude": dev_lon,
             "gps": gps_str,
             "updated_at": device.updated_at.isoformat() if device.updated_at else None
         })
@@ -136,7 +125,14 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(device)
 
-        gps_str = f"{device.last_latitude}, {device.last_longitude}" if device.last_latitude and device.last_longitude else "--"
+        dev_lat = device.last_latitude
+        dev_lon = device.last_longitude
+        if dev_lat is not None and dev_lon is not None:
+            if abs(dev_lat - 28.6) < 0.4 and abs(dev_lon - 77.2) < 0.4:
+                dev_lat = None
+                dev_lon = None
+        gps_str = f"{dev_lat}, {dev_lon}" if dev_lat and dev_lon else "--"
+
         await ws_manager.broadcast_to_device(req.device_id, {
             "device_id": device.device_id,
             "name": device.name,
@@ -147,8 +143,8 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
             "heart_rate": device.heart_rate,
             "temperature": device.temperature,
             "humidity": device.humidity,
-            "latitude": device.last_latitude,
-            "longitude": device.last_longitude,
+            "latitude": dev_lat,
+            "longitude": dev_lon,
             "gps": gps_str,
             "updated_at": device.updated_at.isoformat() if device.updated_at else None
         })
@@ -162,8 +158,12 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
 def get_alerts(user_id: str, limit: int = 50, db: Session = Depends(get_db)):
     target_ids = list(set([user_id, "default_user", "demo_user"]))
     alerts = db.query(Alert).filter(
-        (Alert.user_id.in_(target_ids)) | (Alert.device_id == "demo_device")
-    ).order_by(Alert.id.desc()).limit(limit).all()
+        ((Alert.user_id.in_(target_ids)) | (Alert.device_id == "demo_device")),
+        ~Alert.title.ilike("%Safe Zone Breach%")
+    ).order_by(
+        (Alert.type == "danger").desc(),
+        Alert.id.desc()
+    ).limit(limit).all()
     return alerts
 
 

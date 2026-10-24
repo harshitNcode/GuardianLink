@@ -66,7 +66,11 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         // Instantly display recent alert at top and persist
         val updated = (listOf(instantAlert) + _sharedAlerts.value.filterNot {
             it.title == instantAlert.title && it.time == instantAlert.time
-        }).sortedByDescending { it.timestamp }.take(MAX_SAVED_ALERTS)
+        }).filterNot { it.title.contains("Safe Zone Breach", ignoreCase = true) }
+            .sortedWith(
+                compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
+                    .thenByDescending { it.timestamp }
+            ).take(MAX_SAVED_ALERTS)
 
         _sharedAlerts.value = updated
         AlertLocalStore.saveAlerts(getApplication(), updated)
@@ -151,7 +155,14 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val sorted = combined.sortedByDescending { it.timestamp }.take(MAX_SAVED_ALERTS)
+            val sorted = combined
+                .filterNot { it.title.contains("Safe Zone Breach", ignoreCase = true) }
+                .sortedWith(
+                    compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
+                        .thenByDescending { it.timestamp }
+                )
+                .take(MAX_SAVED_ALERTS)
+
             _sharedAlerts.value = sorted
             AlertLocalStore.saveAlerts(getApplication(), sorted)
         }

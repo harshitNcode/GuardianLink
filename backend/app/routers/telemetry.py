@@ -254,35 +254,36 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
     db.commit()
     db.refresh(device)
 
-    # Evaluate Geofences immediately with new phone GPS coordinates
-    geofence_results = evaluate_geofences(db, target_device_id, payload.latitude, payload.longitude)
-    for result in geofence_results:
-        if not result.is_inside:
-            recent_alert = db.query(Alert).filter(
-                Alert.device_id == target_device_id,
-                Alert.title.like(f"%{result.zone_name}%"),
-                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=45)
-            ).first()
+    # Evaluate Geofences immediately with new phone GPS coordinates (suppress if in active SOS)
+    if not device.sos:
+        geofence_results = evaluate_geofences(db, target_device_id, payload.latitude, payload.longitude)
+        for result in geofence_results:
+            if not result.is_inside:
+                recent_alert = db.query(Alert).filter(
+                    Alert.device_id == target_device_id,
+                    Alert.title.like(f"%{result.zone_name}%"),
+                    Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=45)
+                ).first()
 
-            if not recent_alert:
-                breach_alert = Alert(
-                    user_id="default_user",
-                    device_id=target_device_id,
-                    title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
-                    time=get_current_ist_time_str(),
-                    type="warning",
-                    latitude=payload.latitude,
-                    longitude=payload.longitude
-                )
-                db.add(breach_alert)
-                db.commit()
-                await dispatch_emergency_notification(
-                    user_id="default_user",
-                    device_id=target_device_id,
-                    title=breach_alert.title,
-                    latitude=payload.latitude,
-                    longitude=payload.longitude
-                )
+                if not recent_alert:
+                    breach_alert = Alert(
+                        user_id="default_user",
+                        device_id=target_device_id,
+                        title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
+                        time=get_current_ist_time_str(),
+                        type="warning",
+                        latitude=payload.latitude,
+                        longitude=payload.longitude
+                    )
+                    db.add(breach_alert)
+                    db.commit()
+                    await dispatch_emergency_notification(
+                        user_id="default_user",
+                        device_id=target_device_id,
+                        title=breach_alert.title,
+                        latitude=payload.latitude,
+                        longitude=payload.longitude
+                    )
 
     status_dict = format_device_status(device)
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
