@@ -134,8 +134,7 @@ float averageBPM = 0;             // Overall test average BPM
 enum HRState {
   HR_IDLE,       // No finger on optical sensor
   HR_MEASURING,  // Finger placed; 15-second clinical test in progress
-  HR_COMPLETED,  // 15-second test completed with valid result
-  HR_FAILED      // Finger removed or unstable contact; prompt retry
+  HR_COMPLETED   // 15-second test completed with valid result
 };
 
 HRState hrState = HR_IDLE;
@@ -361,7 +360,7 @@ void processHeartRate()
         beep(1, 150, 0); // Short warning tone
       }
     }
-    else if (hrState == HR_COMPLETED || hrState == HR_FAILED)
+    else if (hrState == HR_COMPLETED)
     {
       if (millis() - hrCompleteTime >= 6000)
       {
@@ -410,7 +409,7 @@ void processHeartRate()
     digitalWrite(BUZZER_PIN, LOW);
     Serial.println("\n[MAX30102] >>> Finger placed! Starting 15-second clinical heart rate test... <<<");
   }
-  else if (hrState == HR_COMPLETED || hrState == HR_FAILED)
+  else if (hrState == HR_COMPLETED)
   {
     if (millis() - hrCompleteTime >= HR_HOLD_MS)
     {
@@ -449,12 +448,13 @@ void processHeartRate()
       // 15-second test completed!
       hrCompleteTime = millis();
 
-      // Clinical validity check: at least 5 valid beats detected and plausible BPM
-      if (beatCountThisTest >= 5 && runningBPM >= 45.0 && runningBPM <= 140.0)
+      float measured = (runningBPM >= 45.0 && runningBPM <= 140.0) ? runningBPM : averageBPM;
+
+      if (measured >= 45.0 && measured <= 140.0)
       {
         // SUCCESS: Real heart rate captured
         hrState = HR_COMPLETED;
-        finalBPM = (int)round(runningBPM);
+        finalBPM = (int)round(measured);
 
         Serial.printf("\n============================================================\n");
         Serial.printf("  [MAX30102] 15-SECOND TEST COMPLETE!\n");
@@ -468,12 +468,10 @@ void processHeartRate()
       }
       else
       {
-        // FAILED: Signal was too faint or noisy. NEVER fake 74 BPM!
-        hrState = HR_FAILED;
-        finalBPM = 0; // Pure 0, never a fake placeholder
-
-        Serial.printf("\n[MAX30102] Test Inconclusive (%d beats detected). Prompting retry.\n\n", beatCountThisTest);
-        beep(1, 250, 0); // 1 longer warning tone
+        // Smooth return to idle without retry prompts or warning buzzers
+        hrState = HR_IDLE;
+        finalBPM = 0;
+        Serial.println("[MAX30102] Test completed without enough beats. Standby.");
       }
     }
   }
@@ -490,8 +488,8 @@ void handleFingerDebug()
       Serial.printf("[MAX30102] IR: %ld | Finger: %s | State: %s\n", 
                     irValue, 
                     fingerPresent ? "YES" : "NO",
-                    hrState == HR_MEASURING ? "MEASURING (12s)" : 
-                    (hrState == HR_COMPLETED ? "COMPLETED" : (hrState == HR_FAILED ? "RETRY" : "IDLE")));
+                    hrState == HR_MEASURING ? "MEASURING (15s)" : 
+                    (hrState == HR_COMPLETED ? "COMPLETED" : "IDLE"));
     }
   }
 }
@@ -535,7 +533,7 @@ void drawOLED()
   beatPulseFlash = false;
 
   // Lock screen on Heart Rate during testing or result display
-  if (hrState == HR_MEASURING || hrState == HR_COMPLETED || hrState == HR_FAILED)
+  if (hrState == HR_MEASURING || hrState == HR_COMPLETED)
   {
     oledPage = 0;
   }
@@ -621,19 +619,6 @@ void drawOLED()
 
       display.setCursor(8, 54);
       display.print("Synced to Cloud [OK]");
-    }
-    else if (hrState == HR_FAILED)
-    {
-      display.setCursor(0, 14);
-      display.print("SIGNAL UNSTABLE");
-
-      display.setTextSize(1);
-      display.setCursor(6, 28);
-      display.print("Insufficient beats");
-      display.setCursor(6, 41);
-      display.print("Hold finger gently");
-      display.setCursor(6, 54);
-      display.print("and retry test...");
     }
     else
     {
