@@ -39,7 +39,7 @@ class GeofenceViewModel(application: Application) : AndroidViewModel(application
             it.name.contains("Rajpath", ignoreCase = true) ||
             it.name.contains("Purana", ignoreCase = true) ||
             it.name.contains("Test Zone", ignoreCase = true) ||
-            Math.abs(it.centerLatitude - 28.61) < 0.05
+            (Math.abs(it.centerLatitude - 28.6) < 0.5 && Math.abs(it.centerLongitude - 77.2) < 0.5)
         }
         geofences.clear()
         geofences.addAll(cached)
@@ -56,7 +56,7 @@ class GeofenceViewModel(application: Application) : AndroidViewModel(application
                 it.name.contains("Rajpath", ignoreCase = true) ||
                 it.name.contains("Purana", ignoreCase = true) ||
                 it.name.contains("Test Zone", ignoreCase = true) ||
-                Math.abs(it.centerLatitude - 28.61) < 0.05
+                (Math.abs(it.centerLatitude - 28.6) < 0.5 && Math.abs(it.centerLongitude - 77.2) < 0.5)
             }
             if (cleanRemote.isNotEmpty()) {
                 val merged = cleanRemote.toMutableList()

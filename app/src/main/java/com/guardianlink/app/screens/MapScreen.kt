@@ -120,6 +120,7 @@ fun MapScreen(
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var deviceMarkerRef by remember { mutableStateOf<Marker?>(null) }
+    var hasAutoCenteredOnDevice by remember { mutableStateOf(false) }
 
     // User Location & Distance Path States
     var showMyLocation by rememberSaveable { mutableStateOf(false) }
@@ -586,8 +587,9 @@ fun MapScreen(
                 }
             }
 
-            if (!geofenceViewModel.isDrawingMode) {
+            if (!geofenceViewModel.isDrawingMode && !hasAutoCenteredOnDevice && !showMyLocation) {
                 mapView.controller.animateTo(geoPoint)
+                hasAutoCenteredOnDevice = true
             }
         } else {
             // Remove device marker if no valid location exists yet

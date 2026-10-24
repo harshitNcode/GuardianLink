@@ -57,7 +57,7 @@ object GeofenceLocalStore {
                     zoneName.contains("Rajpath", ignoreCase = true) ||
                     zoneName.contains("Purana", ignoreCase = true) ||
                     zoneName.contains("Test Zone", ignoreCase = true) ||
-                    Math.abs(centerLat - 28.61) < 0.05
+                    (Math.abs(centerLat - 28.6) < 0.5 && Math.abs(item.optDouble("center_longitude", 0.0) - 77.2) < 0.5)
                 ) {
                     continue
                 }

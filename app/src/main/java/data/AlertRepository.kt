@@ -10,12 +10,22 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 class AlertRepository {
 
     private val client = OkHttpClient()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    private val isoParser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+    private val istFormatter = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone("Asia/Kolkata")
+    }
 
     // Fetch alert history from FastAPI backend
     fun listenToAlerts(userId: String, onUpdate: (List<Alert>) -> Unit) {
@@ -38,11 +48,31 @@ class AlertRepository {
                             val list = mutableListOf<Alert>()
                             for (i in 0 until jsonArray.length()) {
                                 val item = jsonArray.getJSONObject(i)
+                                val alertId = if (item.has("id") && !item.isNull("id")) item.optInt("id") else null
+                                val title = item.optString("title", "Emergency Alert")
+                                var timeStr = item.optString("time", "Just now")
+                                var timestamp = System.currentTimeMillis()
+
+                                // If server provided created_at ISO UTC timestamp, convert to local IST
+                                val createdAtStr = item.optString("created_at", "")
+                                if (createdAtStr.isNotBlank() && createdAtStr != "null") {
+                                    try {
+                                        val cleanIso = createdAtStr.substringBefore(".")
+                                        val parsedDate = isoParser.parse(cleanIso)
+                                        if (parsedDate != null) {
+                                            timestamp = parsedDate.time
+                                            timeStr = istFormatter.format(parsedDate)
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+
                                 list.add(
                                     Alert(
-                                        title = item.optString("title", "Emergency Alert"),
-                                        time = item.optString("time", "Just now"),
-                                        type = item.optString("type", "danger")
+                                        id = alertId,
+                                        title = title,
+                                        time = timeStr,
+                                        type = item.optString("type", "danger"),
+                                        timestamp = timestamp
                                     )
                                 )
                             }
@@ -123,4 +153,36 @@ class AlertRepository {
             }
         })
     }
+
+    // Delete non-SOS alert from backend SQLite database
+    fun deleteAlert(alert: Alert, onComplete: (() -> Unit)? = null) {
+        val url = if (alert.id != null && alert.id > 0) {
+            "${ApiConfig.HTTP_BASE_URL}/api/v1/alerts/${alert.id}"
+        } else {
+            val encodedTitle = java.net.URLEncoder.encode(alert.title, "UTF-8")
+            val encodedTime = java.net.URLEncoder.encode(alert.time, "UTF-8")
+            "${ApiConfig.HTTP_BASE_URL}/api/v1/alerts?title=$encodedTitle&time=$encodedTime"
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Bypass-Tunnel-Reminder", "true")
+            .delete()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w("GuardianLink.Alert", "Failed to delete alert from backend: ${e.message}")
+                mainHandler.post { onComplete?.invoke() }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    Log.d("GuardianLink.Alert", "Deleted alert response code: ${response.code}")
+                    mainHandler.post { onComplete?.invoke() }
+                }
+            }
+        })
+    }
 }
+

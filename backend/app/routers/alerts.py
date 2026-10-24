@@ -1,5 +1,5 @@
 import datetime
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -12,6 +12,13 @@ from app.services.geofence_service import evaluate_geofences
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["Alerts & SOS"])
 
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+
+def get_current_ist_time_str() -> str:
+    """Returns standard Indian Standard Time string (e.g. '24 Oct, 07:15 PM')."""
+    return datetime.datetime.now(IST).strftime("%d %b, %I:%M %p")
+
 
 @router.post("/sos", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
 async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
@@ -22,7 +29,7 @@ async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
     - Broadcasts emergency state to Android via WebSocket
     - Dispatches emergency alert
     """
-    time_str = datetime.datetime.now().strftime("%d %b, %I:%M %p")
+    time_str = get_current_ist_time_str()
     alert = Alert(
         user_id=req.user_id,
         device_id=req.device_id,
@@ -108,7 +115,7 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
     - Creates a persistent Alert log: 'Emergency SOS Stood Down (Resolved)'
     - Broadcasts updated status over WebSocket to all Android apps
     """
-    time_str = datetime.datetime.now().strftime("%d %b, %I:%M %p")
+    time_str = get_current_ist_time_str()
     alert = Alert(
         user_id=req.user_id,
         device_id=req.device_id,
@@ -170,6 +177,36 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(alert)
     return alert
+
+
+@router.delete("/{alert_id}")
+def delete_alert_by_id(alert_id: int, db: Session = Depends(get_db)):
+    """Delete a specific alert by its database ID (except SOS alerts)."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    if alert.type == "danger" or "sos" in alert.title.lower():
+        raise HTTPException(status_code=400, detail="Emergency SOS alerts cannot be deleted")
+    db.delete(alert)
+    db.commit()
+    return {"status": "deleted", "id": alert_id}
+
+
+@router.delete("")
+def delete_alert_by_query(
+    title: Optional[str] = None,
+    time: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Delete non-SOS alerts matching title or time."""
+    query = db.query(Alert).filter(Alert.type != "danger", ~Alert.title.ilike("%sos%"))
+    if title:
+        query = query.filter(Alert.title == title)
+    if time:
+        query = query.filter(Alert.time == time)
+    deleted_count = query.delete(synchronize_session=False)
+    db.commit()
+    return {"status": "deleted", "count": deleted_count}
 
 
 @router.post("/dispatch-whatsapp")

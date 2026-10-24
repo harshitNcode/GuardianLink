@@ -12,9 +12,24 @@ from app.services.notification_service import dispatch_emergency_notification
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["Telemetry & Devices"])
 
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+
+def get_current_ist_time_str() -> str:
+    return datetime.datetime.now(IST).strftime("%d %b, %I:%M %p")
+
 
 def format_device_status(device: Device) -> dict:
-    gps_str = f"{device.last_latitude}, {device.last_longitude}" if device.last_latitude and device.last_longitude else "--"
+    lat = device.last_latitude
+    lon = device.last_longitude
+
+    # Discard any dummy Delhi coordinates (~28.6° N, 77.2° E)
+    if lat is not None and lon is not None:
+        if abs(lat - 28.6) < 0.4 and abs(lon - 77.2) < 0.4:
+            lat = None
+            lon = None
+
+    gps_str = f"{lat}, {lon}" if lat and lon else "--"
     
     # Calculate online status dynamically: mark Offline if no telemetry received for > 40 seconds
     status_str = device.status
@@ -33,8 +48,8 @@ def format_device_status(device: Device) -> dict:
         "heart_rate": device.heart_rate,
         "temperature": device.temperature,
         "humidity": device.humidity,
-        "latitude": device.last_latitude,
-        "longitude": device.last_longitude,
+        "latitude": lat,
+        "longitude": lon,
         "gps": gps_str,
         "updated_at": device.updated_at.isoformat() if device.updated_at else None
     }
@@ -144,7 +159,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             user_id="default_user",
             device_id=target_device_id,
             title="Physical SOS Button Pressed on Wearable",
-            time=datetime.datetime.now().strftime("%d %b, %I:%M %p"),
+            time=get_current_ist_time_str(),
             type="danger",
             latitude=payload.latitude,
             longitude=payload.longitude
@@ -165,7 +180,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             user_id="default_user",
             device_id=target_device_id,
             title=f"Abnormal Heart Rate Detected: {payload.heart_rate} BPM",
-            time=datetime.datetime.now().strftime("%d %b, %I:%M %p"),
+            time=get_current_ist_time_str(),
             type="warning",
             latitude=payload.latitude,
             longitude=payload.longitude
@@ -177,7 +192,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             user_id="default_user",
             device_id=target_device_id,
             title=f"High Body Temperature Detected: {payload.temperature:.1f}°C",
-            time=datetime.datetime.now().strftime("%d %b, %I:%M %p"),
+            time=get_current_ist_time_str(),
             type="warning",
             latitude=payload.latitude,
             longitude=payload.longitude
@@ -254,7 +269,7 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
                     user_id="default_user",
                     device_id=target_device_id,
                     title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
-                    time=datetime.datetime.now().strftime("%d %b, %I:%M %p"),
+                    time=get_current_ist_time_str(),
                     type="warning",
                     latitude=payload.latitude,
                     longitude=payload.longitude
