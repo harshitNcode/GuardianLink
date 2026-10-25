@@ -336,19 +336,27 @@ class GeofenceViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Checks if a target location point breaches any active safe zone.
-     * Invokes callback with breached zone name and distance outside in meters.
+     * Checks if a target location point breaches active safe zones.
+     * If the device is outside ALL active safe zones, invokes callback with the nearest breached zone name
+     * and the breach distance in meters.
      */
     fun checkBreach(point: GeoPoint, onBreach: (zoneName: String, distanceMeters: Int) -> Unit) {
-        for (zone in geofences) {
-            if (!zone.isActive) continue
-            val isInside = GeofenceWktHelper.isPointInsideZone(point, zone)
-            if (!isInside) {
-                val center = GeoPoint(zone.centerLatitude, zone.centerLongitude)
-                val dist = GeofenceWktHelper.distanceBetween(point, center)
-                val breachDist = if (zone.radiusMeters > 0) kotlin.math.max(0.0, dist - zone.radiusMeters) else dist
-                onBreach(zone.name, breachDist.toInt())
-            }
+        val activeZones = geofences.filter { it.isActive }
+        if (activeZones.isEmpty()) return
+
+        // If device is inside ANY active safe zone, device is safe
+        val isInsideAny = activeZones.any { GeofenceWktHelper.isPointInsideZone(point, it) }
+        if (!isInsideAny) {
+            // Device is outside all defined safe zones -> trigger breach alert for closest zone
+            val closestZone = activeZones.minByOrNull {
+                val center = GeoPoint(it.centerLatitude, it.centerLongitude)
+                GeofenceWktHelper.distanceBetween(point, center)
+            } ?: activeZones.first()
+
+            val center = GeoPoint(closestZone.centerLatitude, closestZone.centerLongitude)
+            val dist = GeofenceWktHelper.distanceBetween(point, center)
+            val breachDist = if (closestZone.radiusMeters > 0) kotlin.math.max(0.0, dist - closestZone.radiusMeters) else dist
+            onBreach(closestZone.name, breachDist.toInt())
         }
     }
 }

@@ -86,6 +86,49 @@ class AlertRepository {
         })
     }
 
+    // Post an incident alert (e.g. Safe Zone Breach) to backend database and trigger notification dispatch
+    fun createAlert(
+        userId: String,
+        deviceId: String,
+        title: String,
+        type: String = "warning",
+        latitude: Double? = null,
+        longitude: Double? = null,
+        onComplete: (() -> Unit)? = null
+    ) {
+        val payload = JSONObject().apply {
+            put("user_id", userId)
+            put("device_id", deviceId)
+            put("title", title)
+            put("type", type)
+            if (latitude != null) put("latitude", latitude)
+            if (longitude != null) put("longitude", longitude)
+        }
+
+        val body = payload.toString().toRequestBody(jsonMediaType)
+        val request = Request.Builder()
+            .url("${ApiConfig.HTTP_BASE_URL}/api/v1/alerts")
+            .addHeader("Bypass-Tunnel-Reminder", "true")
+            .post(body)
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w("GuardianLink.Alert", "Failed to sync alert to backend: ${e.message}")
+                mainHandler.post { onComplete?.invoke() }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (response.isSuccessful) {
+                        Log.i("GuardianLink.Alert", "Incident alert successfully recorded on backend!")
+                    }
+                }
+                mainHandler.post { onComplete?.invoke() }
+            }
+        })
+    }
+
     // Trigger an emergency SOS: flags device and logs alert on the FastAPI server
     fun triggerSOS(userId: String, deviceId: String, onComplete: (() -> Unit)? = null) {
         val payload = JSONObject().apply {

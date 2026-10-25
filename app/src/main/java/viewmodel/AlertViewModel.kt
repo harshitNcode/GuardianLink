@@ -53,6 +53,19 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun sortAlerts(list: List<Alert>): List<Alert> {
+        val now = System.currentTimeMillis()
+        return list.sortedWith(
+            // Active unresolved SOS from within last 2 hours stays pinned at very top; otherwise strictly newest first
+            compareByDescending<Alert> {
+                (it.type == "danger" || it.title.contains("SOS", ignoreCase = true)) &&
+                !it.title.contains("Stood Down", ignoreCase = true) &&
+                !it.title.contains("Resolved", ignoreCase = true) &&
+                (now - it.timestamp) < 7200_000L
+            }.thenByDescending { it.timestamp }
+        ).take(MAX_SAVED_ALERTS)
+    }
+
     fun triggerSOS(onComplete: (() -> Unit)? = null) {
         val now = System.currentTimeMillis()
         val timeNow = istFormatter.format(Date(now))
@@ -64,12 +77,9 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             timestamp = now
         )
         // Instantly display recent alert at top and persist
-        val updated = (listOf(instantAlert) + _sharedAlerts.value.filterNot {
+        val updated = sortAlerts(listOf(instantAlert) + _sharedAlerts.value.filterNot {
             it.title == instantAlert.title && it.time == instantAlert.time
-        }).sortedWith(
-            compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
-                .thenByDescending { it.timestamp }
-        ).take(MAX_SAVED_ALERTS)
+        })
 
         _sharedAlerts.value = updated
         AlertLocalStore.saveAlerts(getApplication(), updated)
@@ -91,9 +101,9 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             timestamp = now
         )
         // Instantly display resolution alert at top and persist
-        val updated = (listOf(instantAlert) + _sharedAlerts.value.filterNot {
+        val updated = sortAlerts(listOf(instantAlert) + _sharedAlerts.value.filterNot {
             it.title == instantAlert.title && it.time == instantAlert.time
-        }).sortedByDescending { it.timestamp }.take(MAX_SAVED_ALERTS)
+        })
 
         _sharedAlerts.value = updated
         AlertLocalStore.saveAlerts(getApplication(), updated)
@@ -154,12 +164,7 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val sorted = combined
-                .sortedWith(
-                    compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
-                        .thenByDescending { it.timestamp }
-                )
-                .take(MAX_SAVED_ALERTS)
+            val sorted = sortAlerts(combined)
 
             _sharedAlerts.value = sorted
             AlertLocalStore.saveAlerts(getApplication(), sorted)
@@ -167,10 +172,10 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Instantly records a safe zone breach alert on the client and persists it.
+     * Instantly records a safe zone breach alert on the client, persists it, and syncs to backend.
      * Throttles identical alerts for the same safe zone to 30s cooldown.
      */
-    fun recordSafeZoneBreach(zoneName: String, distanceMeters: Int) {
+    fun recordSafeZoneBreach(zoneName: String, distanceMeters: Int, latitude: Double? = null, longitude: Double? = null) {
         val now = System.currentTimeMillis()
         val timeNow = istFormatter.format(Date(now))
         val title = "Safe Zone Breach: Outside '$zoneName' (${distanceMeters}m away)"
@@ -189,15 +194,22 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             timestamp = now
         )
 
-        val updated = (listOf(instantAlert) + _sharedAlerts.value.filterNot {
+        val updated = sortAlerts(listOf(instantAlert) + _sharedAlerts.value.filterNot {
             it.title == instantAlert.title && it.time == instantAlert.time
-        }).sortedWith(
-            compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
-                .thenByDescending { it.timestamp }
-        ).take(MAX_SAVED_ALERTS)
+        })
 
         _sharedAlerts.value = updated
         AlertLocalStore.saveAlerts(getApplication(), updated)
+
+        // Sync to backend so emergency dispatch notification & database log are recorded
+        repository.createAlert(
+            userId = currentUid,
+            deviceId = currentDeviceId,
+            title = title,
+            type = "warning",
+            latitude = latitude,
+            longitude = longitude
+        )
     }
 }
 

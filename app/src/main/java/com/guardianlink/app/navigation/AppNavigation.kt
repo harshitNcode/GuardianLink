@@ -33,7 +33,9 @@ import androidx.navigation.compose.*
 import com.guardianlink.app.screens.*
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.viewmodel.AlertViewModel
+import com.guardianlink.app.viewmodel.DeviceViewModel
 import com.guardianlink.app.viewmodel.GeofenceViewModel
+import org.osmdroid.util.GeoPoint
 
 private val routesWithoutBottomBar = setOf("splash", "login")
 
@@ -45,7 +47,26 @@ fun AppNavigation(
     val navController = rememberNavController()
     val geofenceViewModel: GeofenceViewModel = viewModel()
     val alertViewModel: AlertViewModel = viewModel()
+    val deviceViewModel: DeviceViewModel = viewModel()
     val alertsList by alertViewModel.alerts.collectAsState()
+    val deviceStatus by deviceViewModel.status.collectAsState()
+
+    // Global Continuous Safe Zone Perimeter Breach Monitor
+    // Runs persistently across Dashboard (Recent Activity), Map, and Alerts screens
+    LaunchedEffect(
+        deviceStatus.latitude,
+        deviceStatus.longitude,
+        geofenceViewModel.geofences.size
+    ) {
+        val lat = deviceStatus.latitude
+        val lng = deviceStatus.longitude
+        if (lat != null && lng != null && deviceStatus.hasValidLocation && geofenceViewModel.geofences.isNotEmpty()) {
+            val devPoint = GeoPoint(lat, lng)
+            geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
+                alertViewModel.recordSafeZoneBreach(breachedZone, breachDist, lat, lng)
+            }
+        }
+    }
 
     val items = listOf(
         BottomNav.Home,

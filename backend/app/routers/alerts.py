@@ -154,13 +154,55 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
     return alert
 
 
+@router.post("", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
+async def create_alert(req: AlertCreate, db: Session = Depends(get_db)):
+    """Log an incident alert (e.g. Safe Zone Breach or Health anomaly)."""
+    target_device = req.device_id or "demo_device"
+    # 30-second deduplication per device & title
+    recent = db.query(Alert).filter(
+        Alert.device_id == target_device,
+        Alert.title == req.title,
+        Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
+    ).first()
+    if recent:
+        return recent
+
+    time_str = req.time or get_current_ist_time_str()
+    alert = Alert(
+        user_id=req.user_id or "demo_user",
+        device_id=target_device,
+        title=req.title,
+        time=time_str,
+        type=req.type or "warning",
+        latitude=req.latitude,
+        longitude=req.longitude,
+        resolved=False
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+
+    # Dispatch notification if warning or danger
+    if req.type in ["danger", "warning"]:
+        await dispatch_emergency_notification(
+            user_id=alert.user_id,
+            device_id=alert.device_id,
+            title=alert.title,
+            latitude=alert.latitude,
+            longitude=alert.longitude
+        )
+
+    return alert
+
+
 @router.get("/{user_id}", response_model=List[AlertResponse])
 def get_alerts(user_id: str, limit: int = 50, db: Session = Depends(get_db)):
     target_ids = list(set([user_id, "default_user", "demo_user"]))
     alerts = db.query(Alert).filter(
         ((Alert.user_id.in_(target_ids)) | (Alert.device_id == "demo_device"))
     ).order_by(
-        (Alert.type == "danger").desc(),
+        Alert.created_at.desc(),
         Alert.id.desc()
     ).limit(limit).all()
     return alerts

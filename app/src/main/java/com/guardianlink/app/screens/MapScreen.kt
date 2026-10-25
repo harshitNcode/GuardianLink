@@ -114,10 +114,10 @@ fun MapScreen(
     ) {
         val lat = status.latitude
         val lng = status.longitude
-        if (lat != null && lng != null && status.hasValidLocation && !status.isDisconnected) {
+        if (lat != null && lng != null && status.hasValidLocation) {
             val devPoint = GeoPoint(lat, lng)
             geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
-                alertViewModel.recordSafeZoneBreach(breachedZone, breachDist)
+                alertViewModel.recordSafeZoneBreach(breachedZone, breachDist, lat, lng)
             }
         }
     }
@@ -1688,7 +1688,7 @@ fun MapScreen(
                                     if (lat != null && lng != null && status.hasValidLocation) {
                                         val devPoint = GeoPoint(lat, lng)
                                         geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
-                                            alertViewModel.recordSafeZoneBreach(breachedZone, breachDist)
+                                            alertViewModel.recordSafeZoneBreach(breachedZone, breachDist, lat, lng)
                                             Toast.makeText(
                                                 context,
                                                 "⚠️ Alert: Monitored device is outside '$breachedZone' (${breachDist}m away)!",

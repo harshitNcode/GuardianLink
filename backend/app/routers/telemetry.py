@@ -37,6 +37,8 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
         elapsed = (datetime.datetime.utcnow() - device.updated_at).total_seconds()
         if elapsed > 40 and not device.sos:
             status_str = "Offline"
+        elif not device.sos and status_str != "Alert":
+            status_str = "Online"
 
     # Always preserve previous live data if current field is empty/zero
     hr = device.heart_rate
@@ -269,6 +271,7 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
     else:
         device.last_latitude = payload.latitude
         device.last_longitude = payload.longitude
+        device.status = "Alert" if device.sos else "Online"
         device.updated_at = datetime.datetime.utcnow()
 
     # Log to historical trail
