@@ -20,7 +20,7 @@ object ApiConfig {
         }
 
     val HTTP_BASE_URL: String
-        
+
         get() = (if (USE_SSL) "https://" else "http://") + HOST
 
     val WS_BASE_URL: String

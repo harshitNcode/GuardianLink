@@ -36,7 +36,7 @@ object AlertLocalStore {
             val filtered = alerts.filterNot { alert ->
                 val sig1 = "${alert.title}_${alert.time}"
                 val sig2 = "${alert.id}_${alert.title}"
-                deletedSignatures.contains(sig1) || deletedSignatures.contains(sig2) || alert.title.contains("Safe Zone Breach", ignoreCase = true)
+                deletedSignatures.contains(sig1) || deletedSignatures.contains(sig2)
             }.take(MAX_ALERTS)
 
             val jsonArray = JSONArray()
@@ -75,7 +75,7 @@ object AlertLocalStore {
 
                 val sig1 = "${title}_${time}"
                 val sig2 = "${alertId}_${title}"
-                if (deletedSignatures.contains(sig1) || deletedSignatures.contains(sig2) || title.contains("Safe Zone Breach", ignoreCase = true)) {
+                if (deletedSignatures.contains(sig1) || deletedSignatures.contains(sig2)) {
                     continue
                 }
 

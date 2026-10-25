@@ -1,5 +1,6 @@
 package com.guardianlink.app.data
 
+import com.guardianlink.app.model.GeofenceZone
 import org.osmdroid.util.GeoPoint
 import kotlin.math.*
 
@@ -120,5 +121,57 @@ object GeofenceWktHelper {
      */
     fun translatePoints(points: List<GeoPoint>, deltaLat: Double, deltaLon: Double): List<GeoPoint> {
         return points.map { GeoPoint(it.latitude + deltaLat, it.longitude + deltaLon) }
+    }
+
+    /**
+     * Haversine distance in meters between two GeoPoints.
+     */
+    fun distanceBetween(p1: GeoPoint, p2: GeoPoint): Double {
+        val earthRadius = 6371000.0 // meters
+        val dLat = Math.toRadians(p2.latitude - p1.latitude)
+        val dLon = Math.toRadians(p2.longitude - p1.longitude)
+        val a = sin(dLat / 2).pow(2.0) +
+                cos(Math.toRadians(p1.latitude)) * cos(Math.toRadians(p2.latitude)) *
+                sin(dLon / 2).pow(2.0)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return earthRadius * c
+    }
+
+    /**
+     * Standard Ray-Casting algorithm to check if a point is inside a polygon.
+     */
+    fun isPointInPolygon(point: GeoPoint, polygon: List<GeoPoint>): Boolean {
+        if (polygon.size < 3) return false
+        var inside = false
+        var j = polygon.size - 1
+        for (i in polygon.indices) {
+            val pi = polygon[i]
+            val pj = polygon[j]
+            if ((pi.longitude > point.longitude) != (pj.longitude > point.longitude) &&
+                (point.latitude < (pj.latitude - pi.latitude) * (point.longitude - pi.longitude) / (pj.longitude - pi.longitude) + pi.latitude)
+            ) {
+                inside = !inside
+            }
+            j = i
+        }
+        return inside
+    }
+
+    /**
+     * Checks if a point is inside a GeofenceZone (either circle or polygon).
+     */
+    fun isPointInsideZone(point: GeoPoint, zone: GeofenceZone): Boolean {
+        if (zone.radiusMeters > 0) {
+            val center = GeoPoint(zone.centerLatitude, zone.centerLongitude)
+            return distanceBetween(point, center) <= zone.radiusMeters
+        }
+        if (!zone.polygonWkt.isNullOrBlank()) {
+            val polyPoints = fromPolygonWkt(zone.polygonWkt)
+            if (polyPoints.isNotEmpty()) {
+                return isPointInPolygon(point, polyPoints)
+            }
+        }
+        val center = GeoPoint(zone.centerLatitude, zone.centerLongitude)
+        return distanceBetween(point, center) <= 500.0
     }
 }

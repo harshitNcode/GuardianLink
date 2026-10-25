@@ -10,6 +10,7 @@ router = APIRouter(prefix="/api/v1/geofence", tags=["Geofencing & Safe Zones"])
 
 
 @router.post("", response_model=GeofenceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=GeofenceResponse, status_code=status.HTTP_201_CREATED)
 def create_geofence_zone(zone_in: GeofenceCreate, db: Session = Depends(get_db)):
     """Create a new safe zone (circular radius or custom polygon)."""
     zone = GeofenceZone(

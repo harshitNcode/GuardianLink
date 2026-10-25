@@ -50,9 +50,6 @@ class AlertRepository {
                                 val item = jsonArray.getJSONObject(i)
                                 val alertId = if (item.has("id") && !item.isNull("id")) item.optInt("id") else null
                                 val title = item.optString("title", "Emergency Alert")
-                                if (title.contains("Safe Zone Breach", ignoreCase = true)) {
-                                    continue
-                                }
                                 var timeStr = item.optString("time", "Just now")
                                 var timestamp = System.currentTimeMillis()
 

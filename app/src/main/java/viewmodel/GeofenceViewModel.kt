@@ -334,4 +334,21 @@ class GeofenceViewModel(application: Application) : AndroidViewModel(application
             }
         }
     }
+
+    /**
+     * Checks if a target location point breaches any active safe zone.
+     * Invokes callback with breached zone name and distance outside in meters.
+     */
+    fun checkBreach(point: GeoPoint, onBreach: (zoneName: String, distanceMeters: Int) -> Unit) {
+        for (zone in geofences) {
+            if (!zone.isActive) continue
+            val isInside = GeofenceWktHelper.isPointInsideZone(point, zone)
+            if (!isInside) {
+                val center = GeoPoint(zone.centerLatitude, zone.centerLongitude)
+                val dist = GeofenceWktHelper.distanceBetween(point, center)
+                val breachDist = if (zone.radiusMeters > 0) kotlin.math.max(0.0, dist - zone.radiusMeters) else dist
+                onBreach(zone.name, breachDist.toInt())
+            }
+        }
+    }
 }

@@ -158,8 +158,7 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
 def get_alerts(user_id: str, limit: int = 50, db: Session = Depends(get_db)):
     target_ids = list(set([user_id, "default_user", "demo_user"]))
     alerts = db.query(Alert).filter(
-        ((Alert.user_id.in_(target_ids)) | (Alert.device_id == "demo_device")),
-        ~Alert.title.ilike("%Safe Zone Breach%")
+        ((Alert.user_id.in_(target_ids)) | (Alert.device_id == "demo_device"))
     ).order_by(
         (Alert.type == "danger").desc(),
         Alert.id.desc()

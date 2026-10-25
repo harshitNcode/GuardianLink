@@ -37,12 +37,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.border
+import android.widget.Toast
 import com.guardianlink.app.components.*
 import com.guardianlink.app.R
 import com.guardianlink.app.data.GeofenceWktHelper
 import com.guardianlink.app.model.GeofenceZone
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.util.MapPreference
+import com.guardianlink.app.viewmodel.AlertViewModel
 import com.guardianlink.app.viewmodel.DeviceViewModel
 import com.guardianlink.app.viewmodel.DrawingShape
 import com.guardianlink.app.viewmodel.GeofenceViewModel
@@ -98,10 +100,27 @@ fun MapScreen(
     onNavigateBack: () -> Unit = {},
     deviceViewModel: DeviceViewModel = viewModel(),
     geofenceViewModel: GeofenceViewModel = viewModel(),
+    alertViewModel: AlertViewModel = viewModel(),
     isDarkMode: Boolean = LocalIsDarkMode.current
 ) {
     val status by deviceViewModel.status.collectAsState()
     val context = LocalContext.current
+
+    // Immediate Geofence Breach Check when device location updates or safe zones change
+    LaunchedEffect(
+        status.latitude,
+        status.longitude,
+        geofenceViewModel.geofences.size
+    ) {
+        val lat = status.latitude
+        val lng = status.longitude
+        if (lat != null && lng != null && status.hasValidLocation && !status.isDisconnected) {
+            val devPoint = GeoPoint(lat, lng)
+            geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
+                alertViewModel.recordSafeZoneBreach(breachedZone, breachDist)
+            }
+        }
+    }
 
     var selectedStyle by rememberSaveable {
         mutableStateOf(
@@ -1663,6 +1682,21 @@ fun MapScreen(
                         onClick = {
                             val name = newZoneName.ifBlank { geofenceViewModel.editingZone?.name ?: "Safe Zone" }
                             geofenceViewModel.saveCurrentShape(name) { success ->
+                                if (success) {
+                                    val lat = status.latitude
+                                    val lng = status.longitude
+                                    if (lat != null && lng != null && status.hasValidLocation) {
+                                        val devPoint = GeoPoint(lat, lng)
+                                        geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
+                                            alertViewModel.recordSafeZoneBreach(breachedZone, breachDist)
+                                            Toast.makeText(
+                                                context,
+                                                "⚠️ Alert: Monitored device is outside '$breachedZone' (${breachDist}m away)!",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                }
                                 showSaveZoneDialog = false
                                 newZoneName = ""
                             }

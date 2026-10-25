@@ -66,11 +66,10 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         // Instantly display recent alert at top and persist
         val updated = (listOf(instantAlert) + _sharedAlerts.value.filterNot {
             it.title == instantAlert.title && it.time == instantAlert.time
-        }).filterNot { it.title.contains("Safe Zone Breach", ignoreCase = true) }
-            .sortedWith(
-                compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
-                    .thenByDescending { it.timestamp }
-            ).take(MAX_SAVED_ALERTS)
+        }).sortedWith(
+            compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
+                .thenByDescending { it.timestamp }
+        ).take(MAX_SAVED_ALERTS)
 
         _sharedAlerts.value = updated
         AlertLocalStore.saveAlerts(getApplication(), updated)
@@ -156,7 +155,6 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val sorted = combined
-                .filterNot { it.title.contains("Safe Zone Breach", ignoreCase = true) }
                 .sortedWith(
                     compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
                         .thenByDescending { it.timestamp }
@@ -166,6 +164,40 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             _sharedAlerts.value = sorted
             AlertLocalStore.saveAlerts(getApplication(), sorted)
         }
+    }
+
+    /**
+     * Instantly records a safe zone breach alert on the client and persists it.
+     * Throttles identical alerts for the same safe zone to 30s cooldown.
+     */
+    fun recordSafeZoneBreach(zoneName: String, distanceMeters: Int) {
+        val now = System.currentTimeMillis()
+        val timeNow = istFormatter.format(Date(now))
+        val title = "Safe Zone Breach: Outside '$zoneName' (${distanceMeters}m away)"
+
+        // Cooldown: do not post duplicate breach alert if one for the same zone was posted in last 30s
+        val recent = _sharedAlerts.value.firstOrNull {
+            it.title.contains(zoneName, ignoreCase = true) && (now - it.timestamp) < 30_000L
+        }
+        if (recent != null) return
+
+        val instantAlert = Alert(
+            id = null,
+            title = title,
+            time = timeNow,
+            type = "warning",
+            timestamp = now
+        )
+
+        val updated = (listOf(instantAlert) + _sharedAlerts.value.filterNot {
+            it.title == instantAlert.title && it.time == instantAlert.time
+        }).sortedWith(
+            compareByDescending<Alert> { it.type == "danger" || it.title.contains("SOS", ignoreCase = true) }
+                .thenByDescending { it.timestamp }
+        ).take(MAX_SAVED_ALERTS)
+
+        _sharedAlerts.value = updated
+        AlertLocalStore.saveAlerts(getApplication(), updated)
     }
 }
 

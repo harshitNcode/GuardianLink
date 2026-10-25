@@ -32,6 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import com.guardianlink.app.screens.*
 import com.guardianlink.app.ui.theme.*
+import com.guardianlink.app.viewmodel.AlertViewModel
 import com.guardianlink.app.viewmodel.GeofenceViewModel
 
 private val routesWithoutBottomBar = setOf("splash", "login")
@@ -43,6 +44,8 @@ fun AppNavigation(
 ) {
     val navController = rememberNavController()
     val geofenceViewModel: GeofenceViewModel = viewModel()
+    val alertViewModel: AlertViewModel = viewModel()
+    val alertsList by alertViewModel.alerts.collectAsState()
 
     val items = listOf(
         BottomNav.Home,
@@ -124,6 +127,7 @@ fun AppNavigation(
                         }
                     },
                     geofenceViewModel = geofenceViewModel,
+                    alertViewModel = alertViewModel,
                     isDarkMode = isDarkMode
                 )
             }
@@ -146,6 +150,7 @@ fun AppNavigation(
                             navController.navigate("dashboard") { launchSingleTop = true }
                         }
                     },
+                    alertViewModel = alertViewModel,
                     isDarkMode = isDarkMode
                 )
             }
@@ -221,11 +226,14 @@ fun AppNavigation(
 
                         items.forEach { item ->
                             val selected = currentDestination == item.route
+                            val isAlertsItem = item == BottomNav.Alerts
+                            val showBadge = isAlertsItem && alertsList.isNotEmpty()
 
                             LiquidDockItem(
                                 item = item,
                                 selected = selected,
                                 isDark = dockIsDark,
+                                showBadge = showBadge,
                                 onClick = {
                                     if (currentDestination != item.route) {
                                         if (item.route == "dashboard") {
@@ -262,6 +270,7 @@ private fun LiquidDockItem(
     item: BottomNav,
     selected: Boolean,
     isDark: Boolean,
+    showBadge: Boolean = false,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -302,34 +311,46 @@ private fun LiquidDockItem(
             }
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.title,
-                tint = if (selected) {
-                    Color.White
-                } else {
-                    // High-contrast unselected icon (easily visible over any map or background!)
-                    if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF334155)
-                },
-                modifier = Modifier.size(22.dp)
-            )
+        Box(contentAlignment = Alignment.TopEnd) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = item.title,
+                    tint = if (selected) {
+                        Color.White
+                    } else {
+                        // High-contrast unselected icon (easily visible over any map or background!)
+                        if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF334155)
+                    },
+                    modifier = Modifier.size(22.dp)
+                )
 
-            Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
-            Text(
-                text = item.title,
-                fontSize = 10.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) {
-                    Color.White
-                } else {
-                    if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF334155)
-                }
-            )
+                Text(
+                    text = item.title,
+                    fontSize = 10.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) {
+                        Color.White
+                    } else {
+                        if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF334155)
+                    }
+                )
+            }
+
+            if (showBadge) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .offset(x = 4.dp, y = (-2).dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color(0xFFEF4444))
+                )
+            }
         }
     }
 }

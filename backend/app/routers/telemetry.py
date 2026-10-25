@@ -160,19 +160,19 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         geofence_results = evaluate_geofences(db, target_device_id, current_lat, current_lon)
     for result in geofence_results:
         if not result.is_inside:
-            # 45-second cooldown per safe zone to allow responsive map alerts without flooding DB
+            # 30-second cooldown per safe zone to allow responsive map alerts without flooding DB
             recent_alert = db.query(Alert).filter(
                 Alert.device_id == target_device_id,
                 Alert.title.like(f"%{result.zone_name}%"),
-                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=45)
+                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
             ).first()
 
             if not recent_alert:
                 breach_alert = Alert(
                     user_id="default_user",
                     device_id=target_device_id,
-                    title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
-                    time=datetime.datetime.now().strftime("%d %b, %I:%M %p"),
+                    title=f"Safe Zone Breach: Outside '{result.zone_name}' ({int(result.distance_meters)}m away)",
+                    time=get_current_ist_time_str(),
                     type="warning",
                     latitude=current_lat,
                     longitude=current_lon
@@ -296,14 +296,14 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
                 recent_alert = db.query(Alert).filter(
                     Alert.device_id == target_device_id,
                     Alert.title.like(f"%{result.zone_name}%"),
-                    Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=45)
+                    Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
                 ).first()
 
                 if not recent_alert:
                     breach_alert = Alert(
                         user_id="default_user",
                         device_id=target_device_id,
-                        title=f"Safe Zone Breach: Outside '{result.zone_name}' ({result.distance_meters}m away)",
+                        title=f"Safe Zone Breach: Outside '{result.zone_name}' ({int(result.distance_meters)}m away)",
                         time=get_current_ist_time_str(),
                         type="warning",
                         latitude=payload.latitude,

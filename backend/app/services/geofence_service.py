@@ -54,18 +54,24 @@ def evaluate_geofences(db: Session, device_id: str, latitude: float, longitude: 
             zone.center_latitude, zone.center_longitude
         )
 
-        if zone.polygon_wkt:
-            # Custom polygon geofence
-            is_inside = is_point_in_polygon(latitude, longitude, zone.polygon_wkt)
-        else:
+        if zone.radius_meters and zone.radius_meters > 0:
             # Circular radius geofence
             is_inside = dist <= zone.radius_meters
+            breach_distance = max(0.0, dist - zone.radius_meters)
+        elif zone.polygon_wkt:
+            # Custom polygon / rectangle / triangle geofence
+            is_inside = is_point_in_polygon(latitude, longitude, zone.polygon_wkt)
+            breach_distance = dist
+        else:
+            # Default circular safe zone
+            is_inside = dist <= 500.0
+            breach_distance = max(0.0, dist - 500.0)
 
         results.append(GeofenceCheckResult(
             zone_id=zone.id,
             zone_name=zone.name,
             is_inside=is_inside,
-            distance_meters=round(dist, 1),
+            distance_meters=round(breach_distance if not is_inside else dist, 1),
             status="SAFE" if is_inside else "BREACH"
         ))
 
