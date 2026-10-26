@@ -52,12 +52,11 @@ object GeofenceLocalStore {
                 val zoneName = item.optString("name", "Safe Zone")
                 val centerLat = item.optDouble("center_latitude", 0.0)
 
-                // Purge any legacy dummy Delhi safe zones
+                // Purge any legacy dummy mock safe zones
                 if (zoneName.contains("India Gate", ignoreCase = true) ||
                     zoneName.contains("Rajpath", ignoreCase = true) ||
                     zoneName.contains("Purana", ignoreCase = true) ||
-                    zoneName.contains("Test Zone", ignoreCase = true) ||
-                    (Math.abs(centerLat - 28.6) < 0.5 && Math.abs(item.optDouble("center_longitude", 0.0) - 77.2) < 0.5)
+                    zoneName.contains("Test Zone", ignoreCase = true)
                 ) {
                     continue
                 }

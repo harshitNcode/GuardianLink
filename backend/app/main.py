@@ -52,22 +52,13 @@ def startup_seed_demo_device():
     from app.models.alert import Alert
     db = SessionLocal()
     try:
-        # 1. Permanently remove any legacy Delhi dummy geofences
+        # 1. Permanently remove any legacy mock geofences by name
         db.query(GeofenceZone).filter(
             GeofenceZone.name.like("%India Gate%") |
             GeofenceZone.name.like("%Rajpath%") |
             GeofenceZone.name.like("%Purana%") |
-            GeofenceZone.name.like("%Test Zone%") |
-            (GeofenceZone.center_latitude.between(28.0, 29.5) & GeofenceZone.center_longitude.between(76.5, 78.0))
+            GeofenceZone.name.like("%Test Zone%")
         ).delete(synchronize_session=False)
-
-        # 2. Reset all devices that have legacy Delhi coordinates
-        all_devices = db.query(Device).all()
-        for dev in all_devices:
-            if dev.last_latitude and abs(dev.last_latitude - 28.6) < 0.5 and dev.last_longitude and abs(dev.last_longitude - 77.2) < 0.5:
-                dev.last_latitude = None
-                dev.last_longitude = None
-                dev.status = "Waiting for signal"
 
         demo_dev = db.query(Device).filter(Device.device_id == "demo_device").first()
         if not demo_dev:

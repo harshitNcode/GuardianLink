@@ -542,16 +542,16 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    text = if (isBroadcastingGps) "Broadcasting this phone's GPS" else "Share This Phone's GPS",
+                                    text = if (isBroadcastingGps) "Broadcasting Phone 2 GPS" else "Companion Beacon Mode (Phone 2)",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = if (isBroadcastingGps) LiquidNeonGreen else (if (isDark) Color.White else TextPrimary)
                                 )
                                 Text(
                                     text = if (isBroadcastingGps)
-                                        lastBroadcastText.ifBlank { "Acquiring GPS fix (ensure Location is ON)..." }
+                                        lastBroadcastText.ifBlank { "Broadcasting live GPS to backend as ${profile.deviceId.ifBlank { "demo_device" }}..." }
                                     else
-                                        "Broadcast phone GPS for live wearable tracking",
+                                        "Enable ONLY on Phone 2 (companion to monitor). Keep OFF on Phone 1.",
                                     fontSize = 12.sp,
                                     fontWeight = if (isBroadcastingGps) FontWeight.SemiBold else FontWeight.Normal,
                                     color = if (isBroadcastingGps) (if (isDark) Color.White else TextPrimary) else (if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary)
@@ -567,7 +567,7 @@ fun ProfileScreen(
                                     val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
                                     if (hasFine || hasCoarse) {
                                         PhoneGpsManager.startBroadcasting(context, profile.deviceId.ifBlank { "demo_device" })
-                                        Toast.makeText(context, "Broadcasting this phone's GPS", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Phone 2 GPS broadcast activated", Toast.LENGTH_SHORT).show()
                                     } else {
                                         gpsPermissionLauncher.launch(
                                             arrayOf(
@@ -578,7 +578,7 @@ fun ProfileScreen(
                                     }
                                 } else {
                                     PhoneGpsManager.stopBroadcasting()
-                                    Toast.makeText(context, "Phone GPS broadcast stopped", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Phone 2 GPS broadcast stopped", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = SwitchDefaults.colors(

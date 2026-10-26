@@ -34,10 +34,6 @@ object EmergencyDispatcher {
 
         var actualLat = latitude
         var actualLon = longitude
-        if (actualLat != null && actualLon != null && Math.abs(actualLat - 28.6) < 0.4 && Math.abs(actualLon - 77.2) < 0.4) {
-            actualLat = null
-            actualLon = null
-        }
         if (actualLat == null || actualLon == null) {
             try {
                 val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager

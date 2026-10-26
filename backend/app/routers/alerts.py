@@ -49,10 +49,8 @@ async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
         device.status = "Alert"
         device.updated_at = datetime.datetime.utcnow()
         if req.latitude and req.longitude:
-            # Only update device coordinates if not dummy Delhi
-            if not (abs(req.latitude - 28.6) < 0.4 and abs(req.longitude - 77.2) < 0.4):
-                device.last_latitude = req.latitude
-                device.last_longitude = req.longitude
+            device.last_latitude = req.latitude
+            device.last_longitude = req.longitude
 
     db.commit()
     db.refresh(alert)
@@ -61,10 +59,6 @@ async def trigger_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
     if device:
         dev_lat = device.last_latitude
         dev_lon = device.last_longitude
-        if dev_lat is not None and dev_lon is not None:
-            if abs(dev_lat - 28.6) < 0.4 and abs(dev_lon - 77.2) < 0.4:
-                dev_lat = None
-                dev_lon = None
         gps_str = f"{dev_lat}, {dev_lon}" if dev_lat and dev_lon else "--"
 
         await ws_manager.broadcast_to_device(req.device_id, {
@@ -127,10 +121,6 @@ async def cancel_sos(req: SOSTriggerRequest, db: Session = Depends(get_db)):
 
         dev_lat = device.last_latitude
         dev_lon = device.last_longitude
-        if dev_lat is not None and dev_lon is not None:
-            if abs(dev_lat - 28.6) < 0.4 and abs(dev_lon - 77.2) < 0.4:
-                dev_lat = None
-                dev_lon = None
         gps_str = f"{dev_lat}, {dev_lon}" if dev_lat and dev_lon else "--"
 
         await ws_manager.broadcast_to_device(req.device_id, {

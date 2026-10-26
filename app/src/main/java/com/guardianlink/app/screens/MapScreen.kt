@@ -106,18 +106,25 @@ fun MapScreen(
     val status by deviceViewModel.status.collectAsState()
     val context = LocalContext.current
 
-    // Immediate Geofence Breach Check when device location updates or safe zones change
+    // Immediate Geofence Breach Check for Monitored Device (Phone 2)
+    // Strictly evaluates ONLY Phone 2 (status.latitude/status.longitude), NEVER myLocationPoint (Phone 1)
     LaunchedEffect(
         status.latitude,
         status.longitude,
+        status.lastUpdatedTimestamp,
         geofenceViewModel.geofences.size
     ) {
         val lat = status.latitude
         val lng = status.longitude
-        if (lat != null && lng != null && status.hasValidLocation) {
+        if (lat != null && lng != null && status.hasValidLocation && geofenceViewModel.geofences.isNotEmpty()) {
             val devPoint = GeoPoint(lat, lng)
             geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
                 alertViewModel.recordSafeZoneBreach(breachedZone, breachDist, lat, lng)
+                Toast.makeText(
+                    context,
+                    "⚠️ Perimeter Breach: Monitored Phone 2 is outside '$breachedZone' (${breachDist}m away)!",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -603,7 +610,7 @@ fun MapScreen(
             if (deviceMarkerRef == null) {
                 val marker = Marker(mapView).apply {
                     position = geoPoint
-                    title = "GuardianLink Wearable"
+                    title = "Phone 2 (Monitored Companion)"
                     snippet = "Battery: ${status.battery} | ${status.network}"
                     icon = beaconDrawable
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
@@ -670,23 +677,22 @@ fun MapScreen(
                     overlays.add(0, touchDragOverlay)
                     overlays.add(1, eventsOverlay)
 
-                    val initialPoint = if (myLocationPoint != null) {
-                        myLocationPoint!!
-                    } else if (status.hasValidLocation) {
-                        GeoPoint(status.latitude!!, status.longitude!!)
-                    } else {
-                        GeoPoint(16.5062, 80.6480)
+                    val mapCenter = when {
+                        status.hasValidLocation -> GeoPoint(status.latitude!!, status.longitude!!)
+                        myLocationPoint != null -> myLocationPoint!!
+                        else -> GeoPoint(16.5062, 80.6480)
                     }
-                    controller.setCenter(initialPoint)
+                    controller.setCenter(mapCenter)
 
                     if (status.hasValidLocation) {
+                        val devicePoint = GeoPoint(status.latitude!!, status.longitude!!)
                         val beaconDrawable = ContextCompat.getDrawable(
                             ctx,
                             if (status.sos) R.drawable.ic_wearable_pin_sos else R.drawable.ic_wearable_pin
                         )
                         val marker = Marker(this).apply {
-                            position = initialPoint
-                            title = "GuardianLink Wearable"
+                            position = devicePoint
+                            title = "Phone 2 (Monitored Companion)"
                             snippet = "Battery: ${status.battery} | ${status.network}"
                             icon = beaconDrawable
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
