@@ -20,6 +20,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
+#include <WiFiUdp.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -154,6 +155,8 @@ int lastValidBPM = 0;
 unsigned long lastTelemetryTime = 0;
 const unsigned long TELEMETRY_INTERVAL = 1500; // 1.5-second fast sync interval
 WebServer localServer(80); // Local server on port 80 for instantaneous trigger
+WiFiUDP udpServer;
+const int UDP_PORT = 8888;
 
 // Forward declarations
 void sendTelemetry();
@@ -456,8 +459,9 @@ void processHeartRate()
     ibiIdx = 0;
     acPeakMax = 120;
 
+    // Quick non-blocking audio chirp on finger detection
     digitalWrite(BUZZER_PIN, HIGH);
-    delay(70);
+    delayMicroseconds(800);
     digitalWrite(BUZZER_PIN, LOW);
     Serial.println("\n[MAX30102] >>> Finger placed! Starting 15-second heart rate test... <<<");
   }
@@ -624,7 +628,7 @@ void drawOLED()
   else if (now - lastPageSwitch >= PAGE_INTERVAL)
   {
     lastPageSwitch = now;
-    oledPage = (oledPage + 1) % 2; // Alternate Page 0 & 1
+    oledPage = (oledPage + 1) % 3; // Alternate Page 0, 1 & 2
   }
 
   display.clearDisplay();
@@ -644,9 +648,9 @@ void drawOLED()
     if (hrState == HR_MEASURING)
     {
       unsigned long elapsed = millis() - hrStartTime;
-      int secLeft = (int)((HR_DURATION_MS - elapsed) / 1000) + 1;
+      if (elapsed > HR_DURATION_MS) elapsed = HR_DURATION_MS;
+      int secLeft = (int)((HR_DURATION_MS - elapsed) / 1000);
       if (secLeft < 0) secLeft = 0;
-      if (secLeft > 15) secLeft = 15;
 
       display.setCursor(0, 13);
       display.print("MEASURING (15 SEC)");
@@ -752,6 +756,29 @@ void drawOLED()
     display.print((int)dhtHumidity);
     display.print("%");
   }
+  // ---------------- PAGE 2: WI-FI & LOCAL IP ----------------
+  else if (oledPage == 2)
+  {
+    display.setCursor(0, 14);
+    display.print("NETWORK & WI-FI");
+
+    display.setTextSize(1);
+    display.setCursor(4, 28);
+    display.printf("SSID: %s", WIFI_SSID);
+
+    display.setCursor(4, 40);
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      display.printf("IP: %s", WiFi.localIP().toString().c_str());
+    }
+    else
+    {
+      display.print("IP: Connecting...");
+    }
+
+    display.setCursor(4, 52);
+    display.print("UDP Port: 8888 [READY]");
+  }
 
   display.display();
 }
@@ -853,7 +880,7 @@ void sendTelemetry()
     http.begin(client, SERVER_URL);
   }
 
-  http.setTimeout(12000); // 12-second timeout for cloud connections
+  http.setTimeout(1000); // 1-second timeout (prevents blocking)
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Bypass-Tunnel-Reminder", "true");
   http.addHeader("User-Agent", "GuardianLink-ESP32");
@@ -1046,6 +1073,10 @@ void setup()
   localServer.begin();
   Serial.print("[HTTP Server] Local server listening on: http://");
   Serial.println(WiFi.localIP());
+
+  // 9. Start UDP Broadcast Server on port 8888 for instant local commands from phone app (<5ms)
+  udpServer.begin(UDP_PORT);
+  Serial.printf("[UDP Server] Listening on UDP port %d for instant triggers from phone app\n", UDP_PORT);
 }
 
 // ============================================================================
@@ -1055,6 +1086,23 @@ void loop()
 {
   // 0. Handle local direct HTTP triggers from phone app (<20ms responsiveness)
   localServer.handleClient();
+
+  // 0b. Handle instant local UDP broadcast triggers (<5ms responsiveness, zero server needed)
+  int packetSize = udpServer.parsePacket();
+  if (packetSize > 0)
+  {
+    char packetBuffer[64];
+    int len = udpServer.read(packetBuffer, sizeof(packetBuffer) - 1);
+    if (len > 0)
+    {
+      packetBuffer[len] = 0;
+      Serial.printf("[UDP Command] Received: %s\n", packetBuffer);
+      if (strstr(packetBuffer, "BUZZER") != NULL || strstr(packetBuffer, "OUT_OF_SAFE_ZONE") != NULL)
+      {
+        triggerBuzzer5Sec();
+      }
+    }
+  }
 
   // 1. Maintain Wi-Fi state & beep audio feedback whenever connected/reconnected
   maintainWiFi();
@@ -1073,13 +1121,14 @@ void loop()
   updateRGBStatus();
 
   // 6. Live & Periodic telemetry transmission to GuardianLink backend
-  // Streams live BPM every 2s while measuring to display live data on the phone app;
-  // Transmits every 1.5s during standby to sync buzzer & safe zone state
-  unsigned long now = millis();
-  unsigned long interval = (hrState == HR_MEASURING && runningBPM > 0) ? 2000 : TELEMETRY_INTERVAL;
-  if (now - lastTelemetryTime >= interval)
+  // SUSPENDED during 15-second heart rate test to prevent network freezes & latency!
+  if (hrState != HR_MEASURING)
   {
-    lastTelemetryTime = now;
-    sendTelemetry();
+    unsigned long now = millis();
+    if (now - lastTelemetryTime >= TELEMETRY_INTERVAL)
+    {
+      lastTelemetryTime = now;
+      sendTelemetry();
+    }
   }
 }

@@ -186,8 +186,9 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (recent != null) return
 
+        val uniqueId = ((now % 10000000).toInt())
         val instantAlert = Alert(
-            id = null,
+            id = uniqueId,
             title = title,
             time = timeNow,
             type = "warning",
@@ -195,7 +196,7 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         val updated = sortAlerts(listOf(instantAlert) + _sharedAlerts.value.filterNot {
-            it.title == instantAlert.title && it.time == instantAlert.time
+            it.id == uniqueId
         })
 
         _sharedAlerts.value = updated
@@ -221,8 +222,9 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         val timeNow = istFormatter.format(Date(now))
         val title = "Out of safe Zone"
 
+        val uniqueId = ((now % 10000000).toInt())
         val instantAlert = Alert(
-            id = null,
+            id = uniqueId,
             title = title,
             time = timeNow,
             type = "warning",
@@ -230,7 +232,7 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         val updated = sortAlerts(listOf(instantAlert) + _sharedAlerts.value.filterNot {
-            it.title == instantAlert.title && it.time == instantAlert.time
+            it.id == uniqueId
         })
 
         _sharedAlerts.value = updated

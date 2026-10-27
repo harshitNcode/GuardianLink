@@ -14,6 +14,7 @@ object AuthPreference {
     private const val KEY_EMERGENCY_CONTACT = "emergency_contact"
     private const val KEY_CALLMEBOT_KEY = "callmebot_key"
     private const val KEY_SERVER_HOST = "server_host"
+    private const val KEY_DEVICE_IP = "wearable_device_ip"
 
     fun isLoggedIn(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -108,6 +109,17 @@ object AuthPreference {
         val cleanHost = host.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
         prefs.edit().putString(KEY_SERVER_HOST, cleanHost).apply()
         com.guardianlink.app.data.ApiConfig.HOST = cleanHost
+    }
+
+    fun getDeviceIp(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DEVICE_IP, "") ?: ""
+    }
+
+    fun setDeviceIp(context: Context, ip: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cleanIp = ip.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
+        prefs.edit().putString(KEY_DEVICE_IP, cleanIp).apply()
     }
 
     fun clear(context: Context) {

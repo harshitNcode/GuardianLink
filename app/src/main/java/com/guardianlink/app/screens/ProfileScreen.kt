@@ -71,6 +71,7 @@ fun ProfileScreen(
     var settingsDeviceId by remember { mutableStateOf("") }
     var settingsCallMeBotKey by remember { mutableStateOf(AuthPreference.getCallMeBotKey(context)) }
     var settingsServerHost by remember { mutableStateOf(AuthPreference.getServerHost(context)) }
+    var settingsDeviceIp by remember { mutableStateOf(AuthPreference.getDeviceIp(context)) }
 
     LaunchedEffect(com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings) {
         if (com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings) {
@@ -80,6 +81,7 @@ fun ProfileScreen(
             settingsDeviceId = profile.deviceId.ifBlank { "demo_device" }
             settingsCallMeBotKey = AuthPreference.getCallMeBotKey(context)
             settingsServerHost = AuthPreference.getServerHost(context)
+            settingsDeviceIp = AuthPreference.getDeviceIp(context)
             showSettingsSheet = true
             com.guardianlink.app.util.SettingsNavFlag.shouldOpenSettings = false
         }
@@ -467,6 +469,19 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = settingsDeviceIp,
+                    onValueChange = { settingsDeviceIp = it },
+                    label = { Text("Wearable Local IP (from OLED screen, e.g. 192.168.43.50)") },
+                    placeholder = { Text("e.g. 192.168.43.50") },
+                    leadingIcon = { Icon(Icons.Default.Wifi, contentDescription = null, tint = PrimaryBlue) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Save Profile Button
@@ -483,6 +498,7 @@ fun ProfileScreen(
                         viewModel.updateProfile(updated)
                         AuthPreference.setCallMeBotKey(context, settingsCallMeBotKey)
                         AuthPreference.setServerHost(context, settingsServerHost)
+                        AuthPreference.setDeviceIp(context, settingsDeviceIp)
                         com.guardianlink.app.viewmodel.DeviceViewModel.activeDeviceId = settingsDeviceId.trim().ifBlank { "demo_device" }
                         showSettingsSheet = false
                         Toast.makeText(context, "Profile & settings saved successfully", Toast.LENGTH_SHORT).show()

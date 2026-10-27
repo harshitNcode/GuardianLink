@@ -35,6 +35,7 @@ import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.viewmodel.AlertViewModel
 import com.guardianlink.app.viewmodel.DeviceViewModel
 import com.guardianlink.app.viewmodel.GeofenceViewModel
+import com.guardianlink.app.viewmodel.UserViewModel
 import org.osmdroid.util.GeoPoint
 
 private val routesWithoutBottomBar = setOf("splash", "login")
@@ -48,6 +49,7 @@ fun AppNavigation(
     val geofenceViewModel: GeofenceViewModel = viewModel()
     val alertViewModel: AlertViewModel = viewModel()
     val deviceViewModel: DeviceViewModel = viewModel()
+    val userViewModel: UserViewModel = viewModel()
     val alertsList by alertViewModel.alerts.collectAsState()
     val deviceStatus by deviceViewModel.status.collectAsState()
 
@@ -138,6 +140,9 @@ fun AppNavigation(
             composable("dashboard") {
                 DashboardScreen(
                     navController = navController,
+                    alertViewModel = alertViewModel,
+                    deviceViewModel = deviceViewModel,
+                    userViewModel = userViewModel,
                     isDarkMode = isDarkMode
                 )
             }

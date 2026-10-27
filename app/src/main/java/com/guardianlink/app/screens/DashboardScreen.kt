@@ -42,11 +42,11 @@ data class SearchSectionResult(
 @Composable
 fun DashboardScreen(
     navController: NavController? = null,
+    alertViewModel: AlertViewModel = viewModel(),
+    deviceViewModel: DeviceViewModel = viewModel(),
+    userViewModel: UserViewModel = viewModel(),
     isDarkMode: Boolean = isSystemInDarkTheme()
 ) {
-    val alertViewModel: AlertViewModel = viewModel()
-    val deviceViewModel = remember { DeviceViewModel() }
-    val userViewModel: UserViewModel = viewModel()
     val userProfile by userViewModel.profile.collectAsState()
     val status by deviceViewModel.status.collectAsState()
     val isRefreshing by deviceViewModel.isRefreshing.collectAsState()
@@ -1116,7 +1116,7 @@ fun DashboardScreen(
                                 alertViewModel.refresh()
                             }
 
-                            // 2. Sound buzzer for 5s continuously and turn LED red for 5s
+                            // 2. Sound buzzer for 5s continuously and turn LED red for 5s (UDP broadcast + Local IP + Cloud)
                             deviceViewModel.triggerBuzzerAlarm()
 
                             android.widget.Toast.makeText(
@@ -1124,6 +1124,11 @@ fun DashboardScreen(
                                 "🚨 'Out of safe Zone' alert triggered! Buzzer & Red LED active for 5s.",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
+
+                            // 3. Immediately navigate to Alerts screen so user sees the message right away
+                            navController?.navigate("alerts") {
+                                launchSingleTop = true
+                            }
                         },
                         variant = LiquidButtonVariant.EMERGENCY,
                         height = 50.dp,

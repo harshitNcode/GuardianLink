@@ -84,7 +84,9 @@ class DeviceViewModel : ViewModel() {
     }
 
     fun triggerBuzzerAlarm(onComplete: (() -> Unit)? = null) {
-        val currentIp = _status.value.ip
+        val currentIp = (_status.value.ip ?: "").ifBlank {
+            appContext?.let { com.guardianlink.app.util.AuthPreference.getDeviceIp(it) } ?: ""
+        }
         repository.triggerBuzzerAlarm(deviceId, currentIp, onComplete)
     }
 

@@ -56,6 +56,26 @@ class DeviceRepository {
     }
 
     fun triggerBuzzerAlarm(deviceId: String, deviceIp: String? = null, onComplete: (() -> Unit)? = null) {
+        // 0. Direct Wi-Fi / Hotspot UDP Subnet Broadcast (Reaches ESP32 in <5ms without needing server or known IP!)
+        kotlin.concurrent.thread(start = true) {
+            try {
+                val socket = java.net.DatagramSocket()
+                socket.broadcast = true
+                val payload = "OUT_OF_SAFE_ZONE".toByteArray(Charsets.UTF_8)
+                val packet = java.net.DatagramPacket(
+                    payload,
+                    payload.size,
+                    java.net.InetAddress.getByName("255.255.255.255"),
+                    8888
+                )
+                socket.send(packet)
+                socket.close()
+                Log.d("GuardianLink.Device", "UDP Subnet Broadcast sent to 255.255.255.255:8888")
+            } catch (e: Exception) {
+                Log.e("GuardianLink.Device", "UDP Broadcast error: ${e.message}")
+            }
+        }
+
         // 1. Direct local IP trigger if device IP is known (fires in ~10ms on local Wi-Fi / hotspot)
         if (!deviceIp.isNullOrBlank()) {
             val cleanIp = deviceIp.trim()
