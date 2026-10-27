@@ -197,6 +197,21 @@ def run_all_tests():
         assert r_pair.json()["device_id"] == "esp32_device_01"
     test("User Profile Management & Device Pairing", t_user_profile)
 
+    # 11. ESP32 Buzzer Alarm Trigger Endpoint
+    def t_buzzer():
+        r = client.post("/api/v1/telemetry/esp32_device_01/buzzer")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["buzzer"] is True
+        assert data["breach"] is True
+
+        # Verify device latest status reflects buzzer state
+        r_latest = client.get("/api/v1/telemetry/esp32_device_01/latest")
+        assert r_latest.status_code == 200
+        assert r_latest.json()["buzzer"] is True
+        assert r_latest.json()["breach"] is True
+    test("ESP32 Buzzer Alarm Trigger Endpoint", t_buzzer)
+
     # Cleanup test db
     client.close()
     Base.metadata.drop_all(bind=engine)

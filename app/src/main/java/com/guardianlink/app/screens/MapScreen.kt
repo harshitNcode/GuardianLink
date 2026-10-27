@@ -120,6 +120,7 @@ fun MapScreen(
             val devPoint = GeoPoint(lat, lng)
             geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
                 alertViewModel.recordSafeZoneBreach(breachedZone, breachDist, lat, lng)
+                deviceViewModel.triggerBuzzerAlarm()
                 Toast.makeText(
                     context,
                     "⚠️ Perimeter Breach: Monitored Phone 2 is outside '$breachedZone' (${breachDist}m away)!",
@@ -178,6 +179,7 @@ fun MapScreen(
     // Real-time phone location listener when "My Location" is active
     DisposableEffect(showMyLocation) {
         if (!showMyLocation) {
+            myLocationPoint = null
             onDispose { }
         } else {
             val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
@@ -213,22 +215,9 @@ fun MapScreen(
         }
     }
 
-    // Initialize osmdroid user agent & cache and acquire current location if permitted
+    // Initialize osmdroid user agent & cache
     LaunchedEffect(Unit) {
         Configuration.getInstance().userAgentValue = context.packageName
-        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (hasFine || hasCoarse) {
-            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            val loc = try {
-                lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                    ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                    ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-            } catch (_: SecurityException) { null }
-            if (loc != null) {
-                myLocationPoint = GeoPoint(loc.latitude, loc.longitude)
-            }
-        }
     }
 
     fun getTileSource(style: MapStyle) = when (style) {
@@ -626,7 +615,7 @@ fun MapScreen(
                 }
             }
 
-            if (!geofenceViewModel.isDrawingMode && !hasAutoCenteredOnDevice && !showMyLocation && myLocationPoint == null) {
+            if (!geofenceViewModel.isDrawingMode && !hasAutoCenteredOnDevice && !showMyLocation) {
                 mapView.controller.animateTo(geoPoint)
                 hasAutoCenteredOnDevice = true
             }
@@ -679,7 +668,7 @@ fun MapScreen(
 
                     val mapCenter = when {
                         status.hasValidLocation -> GeoPoint(status.latitude!!, status.longitude!!)
-                        myLocationPoint != null -> myLocationPoint!!
+                        showMyLocation && myLocationPoint != null -> myLocationPoint!!
                         else -> GeoPoint(16.5062, 80.6480)
                     }
                     controller.setCenter(mapCenter)
@@ -1289,34 +1278,77 @@ fun MapScreen(
         }
 
         // 3. Floating Action Controls
-        // Left Floating Safe Zones Button (Zero shadow, pure Liquid Glass)
+        // Left Floating Controls Stack (Out-of-Safe-Zone Manual Breach Alarm + Safe Zones List)
         if (!geofenceViewModel.isDrawingMode) {
-            LiquidGlassCircleButton(
-                onClick = { showGeofenceSheet = true },
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(bottom = 196.dp, start = 16.dp),
-                size = 52.dp,
-                isDark = isDarkMode
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.Start
             ) {
-                BadgedBox(
-                    badge = {
-                        if (geofenceViewModel.geofences.isNotEmpty()) {
-                            Badge { Text("${geofenceViewModel.geofences.size}") }
-                        }
-                    }
+                // Out-of-Safe-Zone Manual Breach Alarm Button (Beeps ESP32 for 5s + logs alert)
+                LiquidGlassCircleButton(
+                    onClick = {
+                        val currentLat = status.latitude ?: 0.0
+                        val currentLng = status.longitude ?: 0.0
+                        val zoneName = geofenceViewModel.geofences.firstOrNull()?.name ?: "Safe Zone"
+
+                        // 1. Immediately log to AlertViewModel (saved locally, updates Alerts tab and Recent Activity)
+                        alertViewModel.recordSafeZoneBreach(
+                            zoneName = zoneName,
+                            distanceMeters = 85,
+                            latitude = currentLat,
+                            longitude = currentLng
+                        )
+
+                        // 2. Dispatch to backend API -> triggers WhatsApp emergency alert & activates ESP32 buzzer
+                        deviceViewModel.triggerBuzzerAlarm()
+
+                        android.widget.Toast.makeText(
+                            context,
+                            "🚨 Safe Zone Breach Alert Sent! ESP32 Buzzer Beeping for 5s.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    },
+                    size = 52.dp,
+                    containerColor = LiquidRubyEmergency,
+                    contentColor = Color.White,
+                    isDark = isDarkMode
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = "Safe Zones",
-                        tint = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Trigger Out of Safe Zone Alert",
+                        tint = Color.White,
                         modifier = Modifier.size(24.dp)
                     )
+                }
+
+                // Safe Zones Drawer Button
+                LiquidGlassCircleButton(
+                    onClick = { showGeofenceSheet = true },
+                    size = 52.dp,
+                    isDark = isDarkMode
+                ) {
+                    BadgedBox(
+                        badge = {
+                            if (geofenceViewModel.geofences.isNotEmpty()) {
+                                Badge { Text("${geofenceViewModel.geofences.size}") }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = "Safe Zones",
+                            tint = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // Right Floating Controls Stack (Zoom +, Zoom -, Recenter) - Zero shadow
+        // Right Floating Controls Stack (Zoom +, Zoom -, Track Phone 2, My Location)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -1352,43 +1384,84 @@ fun MapScreen(
                 )
             }
 
-            // My Location Button
+            // Focus & Track Phone 2 (Monitored Companion)
             LiquidGlassCircleButton(
                 onClick = {
-                    val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                    val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-                    if (hasFine || hasCoarse) {
-                        showMyLocation = true
-                        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                        val phoneLoc = try {
-                            lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                                ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                                ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-                        } catch (_: SecurityException) { null }
-
-                        if (phoneLoc != null) {
-                            myLocationPoint = GeoPoint(phoneLoc.latitude, phoneLoc.longitude)
-                            mapViewRef?.let {
-                                refreshLocationAndDistanceOverlays(it)
-                                it.controller.animateTo(myLocationPoint!!)
-                            }
-                            android.widget.Toast.makeText(context, "Centered on your location", android.widget.Toast.LENGTH_SHORT).show()
+                    showMyLocation = false
+                    myLocationPoint = null
+                    mapViewRef?.let { map ->
+                        refreshLocationAndDistanceOverlays(map)
+                        if (status.hasValidLocation) {
+                            map.controller.animateTo(GeoPoint(status.latitude!!, status.longitude!!))
+                            android.widget.Toast.makeText(context, "Tracking Phone 2 (Live Location)", android.widget.Toast.LENGTH_SHORT).show()
                         } else {
-                            android.widget.Toast.makeText(context, "Acquiring your phone's GPS...", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "Waiting for Phone 2 GPS coordinates...", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                    } else {
-                        locationPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
                     }
                 },
                 size = 52.dp,
-                containerColor = if (isDarkMode) LiquidNeonCyan else PrimaryBlue,
-                contentColor = if (isDarkMode) LiquidCanvasDark else Color.White,
+                containerColor = if (!showMyLocation) (if (isDarkMode) LiquidNeonGreen else PrimaryBlue) else (if (isDarkMode) LiquidGlassBgDark else LiquidGlassBgLight),
+                contentColor = if (!showMyLocation) (if (isDarkMode) LiquidCanvasDark else Color.White) else (if (isDarkMode) Color.White else PrimaryBlue),
+                isDark = isDarkMode
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Sensors,
+                    contentDescription = "Track Phone 2",
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            // My Location Button (This Phone) - Only activates and shows location when explicitly clicked
+            LiquidGlassCircleButton(
+                onClick = {
+                    val willEnable = !showMyLocation
+                    if (willEnable) {
+                        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+                        if (hasFine || hasCoarse) {
+                            showMyLocation = true
+                            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                            val phoneLoc = try {
+                                lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                                    ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                                    ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+                            } catch (_: SecurityException) { null }
+
+                            if (phoneLoc != null) {
+                                myLocationPoint = GeoPoint(phoneLoc.latitude, phoneLoc.longitude)
+                                mapViewRef?.let { map ->
+                                    refreshLocationAndDistanceOverlays(map)
+                                    map.controller.animateTo(myLocationPoint!!)
+                                }
+                                android.widget.Toast.makeText(context, "Showing My Location (This Phone)", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Acquiring your phone's GPS...", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        }
+                    } else {
+                        // Toggle off My Location -> return focus to Phone 2
+                        showMyLocation = false
+                        myLocationPoint = null
+                        mapViewRef?.let { map ->
+                            refreshLocationAndDistanceOverlays(map)
+                            if (status.hasValidLocation) {
+                                map.controller.animateTo(GeoPoint(status.latitude!!, status.longitude!!))
+                            }
+                        }
+                        android.widget.Toast.makeText(context, "Returned to Phone 2 Live Location", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
+                size = 52.dp,
+                containerColor = if (showMyLocation) (if (isDarkMode) LiquidNeonCyan else PrimaryBlue) else (if (isDarkMode) LiquidGlassBgDark else LiquidGlassBgLight),
+                contentColor = if (showMyLocation) (if (isDarkMode) LiquidCanvasDark else Color.White) else (if (isDarkMode) Color.White else PrimaryBlue),
                 isDark = isDarkMode
             ) {
                 Icon(
@@ -1472,7 +1545,33 @@ fun MapScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Manual Breach Alarm Button inside Safe Zones drawer
+                    Button(
+                        onClick = {
+                            val currentLat = status.latitude ?: 0.0
+                            val currentLng = status.longitude ?: 0.0
+                            val zoneName = geofenceViewModel.geofences.firstOrNull()?.name ?: "Primary Safe Zone"
+                            alertViewModel.recordSafeZoneBreach(zoneName, 85, currentLat, currentLng)
+                            deviceViewModel.triggerBuzzerAlarm()
+                            showGeofenceSheet = false
+                            android.widget.Toast.makeText(
+                                context,
+                                "🚨 Safe Zone Breach Alert Sent! ESP32 Buzzer Beeping for 5s.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = LiquidRubyEmergency),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Trigger Safe Zone Breach Alarm (5s Buzzer)", fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     if (geofenceViewModel.geofences.isEmpty()) {
                         Box(

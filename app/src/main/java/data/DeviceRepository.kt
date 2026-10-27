@@ -55,6 +55,29 @@ class DeviceRepository {
         })
     }
 
+    fun triggerBuzzerAlarm(deviceId: String, onComplete: (() -> Unit)? = null) {
+        val emptyBody = "{}".toRequestBody(jsonMediaType)
+        val request = Request.Builder()
+            .url("${ApiConfig.HTTP_BASE_URL}/api/v1/telemetry/$deviceId/buzzer")
+            .addHeader("Bypass-Tunnel-Reminder", "true")
+            .post(emptyBody)
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w("GuardianLink.Device", "Failed to trigger buzzer alarm: ${e.message}")
+                mainHandler.post { onComplete?.invoke() }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    if (it.isSuccessful) {
+                        Log.d("GuardianLink.Device", "Buzzer alarm successfully triggered on ESP32!")
+                    }
+                }
+                mainHandler.post { onComplete?.invoke() }
+            }
+        })
+    }
+
     fun listenToStatus(deviceId: String, onUpdate: (DeviceStatus) -> Unit) {
         isListening = true
 

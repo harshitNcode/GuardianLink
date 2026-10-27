@@ -72,6 +72,25 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
             if past_hum and past_hum[0]:
                 hum = past_hum[0]
 
+        # Check if safe zone breach or emergency buzzer was triggered within last 20s
+        recent_alert = db.query(Alert).filter(
+            Alert.device_id == device.device_id,
+            Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=20)
+        ).order_by(Alert.created_at.desc()).first()
+
+        is_buzzer = False
+        is_breached = False
+        if recent_alert:
+            if "Breach" in recent_alert.title or "Safe Zone" in recent_alert.title or recent_alert.type in ["warning", "danger"]:
+                is_buzzer = True
+                is_breached = True
+        if device.sos:
+            is_buzzer = True
+
+    else:
+        is_buzzer = device.sos
+        is_breached = False
+
     return {
         "device_id": device.device_id,
         "name": device.name,
@@ -85,6 +104,8 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
         "latitude": lat,
         "longitude": lon,
         "gps": gps_str,
+        "buzzer": is_buzzer,
+        "breach": is_breached,
         "updated_at": device.updated_at.isoformat() if device.updated_at else None
     }
 
@@ -347,6 +368,55 @@ def get_latest_device_status(device_id: str, db: Session = Depends(get_db)):
             updated_at=None
         )
     return DeviceStatusResponse(**format_device_status(device, db))
+
+
+@router.post("/{device_id}/buzzer", response_model=DeviceStatusResponse)
+async def trigger_device_buzzer(device_id: str, db: Session = Depends(get_db)):
+    """Trigger the 5-second buzzer alarm on the ESP32 board and log a safe zone breach alert."""
+    target_device_id = "demo_device" if (device_id == "string" or not device_id) else device_id
+    device = db.query(Device).filter(Device.device_id == target_device_id).first()
+    if not device:
+        device = Device(
+            device_id=target_device_id,
+            name="Guardian Wearable",
+            status="Alert",
+            battery="95%",
+            network="Wi-Fi",
+            sos=False,
+            updated_at=datetime.datetime.utcnow()
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
+
+    # 1. Log incident breach alert
+    alert = Alert(
+        user_id="default_user",
+        device_id=target_device_id,
+        title="Safe Zone Breach: Monitored Device Outside Safe Zone (Manual Alarm Triggered)",
+        time=get_current_ist_time_str(),
+        type="warning",
+        latitude=device.last_latitude,
+        longitude=device.last_longitude
+    )
+    db.add(alert)
+    db.commit()
+
+    # 2. Dispatch emergency WhatsApp / notification
+    await dispatch_emergency_notification(
+        user_id="default_user",
+        device_id=target_device_id,
+        title=alert.title,
+        latitude=device.last_latitude,
+        longitude=device.last_longitude
+    )
+
+    # 3. Broadcast status to ESP32 and phone app with buzzer=True and breach=True
+    status_dict = format_device_status(device, db)
+    status_dict["buzzer"] = True
+    status_dict["breach"] = True
+    await ws_manager.broadcast_to_device(target_device_id, status_dict)
+    return DeviceStatusResponse(**status_dict)
 
 
 @router.get("/{device_id}/history", response_model=List[TelemetryResponse])

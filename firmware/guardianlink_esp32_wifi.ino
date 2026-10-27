@@ -157,6 +157,41 @@ const unsigned long TELEMETRY_INTERVAL = 4000; // 4-second background sync
 void sendTelemetry();
 void beep(int times, int onMs, int offMs);
 void setRGB(bool red, bool green, bool blue);
+void triggerBuzzer5Sec();
+void updateBuzzerAlarm();
+
+// ============================================================================
+// 5-SECOND NON-BLOCKING BUZZER ALARM (SAFE ZONE BREACH & MANUAL TRIGGER)
+// ============================================================================
+unsigned long buzzerAlarmStartTime = 0;
+bool buzzerAlarmActive5Sec = false;
+
+void triggerBuzzer5Sec()
+{
+  buzzerAlarmActive5Sec = true;
+  buzzerAlarmStartTime = millis();
+  Serial.println("\n[ALARM] >>> SAFE ZONE BREACH DETECTED! Sounding 5-Second Buzzer Alarm! <<<");
+}
+
+void updateBuzzerAlarm()
+{
+  if (buzzerAlarmActive5Sec)
+  {
+    unsigned long elapsed = millis() - buzzerAlarmStartTime;
+    if (elapsed < 5000)
+    {
+      // Rapid alert beep pattern: 150ms ON, 100ms OFF
+      bool beepOn = ((elapsed % 250) < 150);
+      digitalWrite(BUZZER_PIN, beepOn ? HIGH : LOW);
+    }
+    else
+    {
+      digitalWrite(BUZZER_PIN, LOW);
+      buzzerAlarmActive5Sec = false;
+      Serial.println("[ALARM] Buzzer alarm 5s elapsed. Standby.");
+    }
+  }
+}
 
 // ============================================================================
 // BUZZER BEEP HELPER
@@ -816,7 +851,24 @@ void sendTelemetry()
 
   if (httpCode > 0)
   {
-    Serial.printf("[HTTP] Server Response: %d\n", httpCode);
+    String response = http.getString();
+    Serial.printf("[HTTP] Server Response (%d): %s\n", httpCode, response.c_str());
+
+    // Parse server response to check for safe zone breach or buzzer alarm triggers
+    StaticJsonDocument<512> respDoc;
+    DeserializationError err = deserializeJson(respDoc, response);
+    if (!err)
+    {
+      bool breach = respDoc["breach"] | false;
+      bool buzzer = respDoc["buzzer"] | false;
+      bool sos = respDoc["sos"] | false;
+
+      if ((breach || buzzer || sos) && !buzzerAlarmActive5Sec)
+      {
+        triggerBuzzer5Sec();
+      }
+    }
+
     if (httpCode == 200 || httpCode == 201)
     {
       Serial.println("[HTTP] Vitals successfully synced with GuardianLink cloud!");
@@ -940,8 +992,9 @@ void loop()
   // 4. Update OLED Carousel Display
   drawOLED();
 
-  // 5. Update RGB status LED
+  // 5. Update RGB status LED & 5-second buzzer alarm
   updateRGBStatus();
+  updateBuzzerAlarm();
 
   // 6. Live & Periodic telemetry transmission to GuardianLink backend
   // Streams live BPM every 2.5s while measuring to display live data on the phone app;

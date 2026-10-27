@@ -83,6 +83,10 @@ class DeviceViewModel : ViewModel() {
         repository.sendPhoneLocation(deviceId, latitude, longitude)
     }
 
+    fun triggerBuzzerAlarm(onComplete: (() -> Unit)? = null) {
+        repository.triggerBuzzerAlarm(deviceId, onComplete)
+    }
+
     fun refresh() {
         if (_isRefreshing.value) return
         _isRefreshing.value = true

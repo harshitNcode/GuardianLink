@@ -50,6 +50,8 @@ class DeviceStatusResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     gps: str  # Format: "12.9716, 77.5946" compatible with Android DeviceStatus
+    buzzer: bool = False  # Activates 5-second beep on ESP32 board
+    breach: bool = False  # True when device is currently outside safe zone
     updated_at: Optional[datetime] = None
 
     class Config:
