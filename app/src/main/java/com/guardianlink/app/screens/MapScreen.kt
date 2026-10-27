@@ -1287,28 +1287,14 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.Start
             ) {
-                // Out-of-Safe-Zone Manual Breach Alarm Button (Beeps ESP32 for 5s + logs alert)
+                // Out-of-Safe-Zone Button — Direct trigger, no conditions checked
                 LiquidGlassCircleButton(
                     onClick = {
-                        val currentLat = status.latitude ?: 0.0
-                        val currentLng = status.longitude ?: 0.0
-                        val zoneName = geofenceViewModel.geofences.firstOrNull()?.name ?: "Safe Zone"
-
-                        // 1. Immediately log to AlertViewModel (saved locally, updates Alerts tab and Recent Activity)
-                        alertViewModel.recordSafeZoneBreach(
-                            zoneName = zoneName,
-                            distanceMeters = 85,
-                            latitude = currentLat,
-                            longitude = currentLng
-                        )
-
-                        // 2. Dispatch to backend API -> triggers WhatsApp emergency alert & activates ESP32 buzzer
                         deviceViewModel.triggerBuzzerAlarm()
-
                         android.widget.Toast.makeText(
                             context,
-                            "🚨 Safe Zone Breach Alert Sent! ESP32 Buzzer Beeping for 5s.",
-                            android.widget.Toast.LENGTH_LONG
+                            "🚨 Buzzer Activated! Beeping for 5 seconds with Red LED.",
+                            android.widget.Toast.LENGTH_SHORT
                         ).show()
                     },
                     size = 52.dp,
@@ -1318,7 +1304,7 @@ fun MapScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Warning,
-                        contentDescription = "Trigger Out of Safe Zone Alert",
+                        contentDescription = "Out of Safe Zone Buzzer",
                         tint = Color.White,
                         modifier = Modifier.size(24.dp)
                     )
@@ -1550,16 +1536,12 @@ fun MapScreen(
                     // Manual Breach Alarm Button inside Safe Zones drawer
                     Button(
                         onClick = {
-                            val currentLat = status.latitude ?: 0.0
-                            val currentLng = status.longitude ?: 0.0
-                            val zoneName = geofenceViewModel.geofences.firstOrNull()?.name ?: "Primary Safe Zone"
-                            alertViewModel.recordSafeZoneBreach(zoneName, 85, currentLat, currentLng)
                             deviceViewModel.triggerBuzzerAlarm()
                             showGeofenceSheet = false
                             android.widget.Toast.makeText(
                                 context,
-                                "🚨 Safe Zone Breach Alert Sent! ESP32 Buzzer Beeping for 5s.",
-                                android.widget.Toast.LENGTH_LONG
+                                "🚨 Buzzer Activated! Beeping for 5 seconds with Red LED.",
+                                android.widget.Toast.LENGTH_SHORT
                             ).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = LiquidRubyEmergency),

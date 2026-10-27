@@ -593,15 +593,16 @@ void drawOLED()
     display.clearDisplay();
     display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
     display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
-    display.setTextSize(2);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(8, 8);
-    display.print("EMERGENCY!");
     display.setTextSize(1);
-    display.setCursor(14, 30);
-    display.print("SAFE ZONE BREACH");
-    display.setCursor(18, 46);
-    display.printf("ALARM BEEP: %ds", secLeft);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(4, 6);
+    display.print("!! ALERT !!");
+    display.setTextSize(1);
+    display.setCursor(4, 22);
+    display.print("OUT OF SAFE ZONE");
+    display.setTextSize(2);
+    display.setCursor(18, 38);
+    display.printf(" %ds", secLeft);
     display.display();
     return;
   }
