@@ -33,8 +33,8 @@
 // 1. WI-FI & BACKEND SERVER CONFIGURATION
 // ============================================================================
 // Your Wi-Fi or Phone Hotspot Credentials
-const char* WIFI_SSID     = "Sharma";
-const char* WIFI_PASSWORD = "12345678";
+const char* WIFI_SSID     = "Phone";
+const char* WIFI_PASSWORD = "123454321";
 
 // Backend API URL:
 // - If deployed on Render (Cloud 24/7):
@@ -42,7 +42,7 @@ const char* WIFI_PASSWORD = "12345678";
 //   "https://guardianlink-api-xxxx.onrender.com/api/v1/telemetry"
 // - If testing locally on your laptop:
 //   "http://192.168.x.x:8000/api/v1/telemetry"
-const char* SERVER_URL    = "https://guardianlink-api-itkx.onrender.com/api/v1/telemetry";
+const char* SERVER_URL    = "https://guardianlink-api-xxxx.onrender.com/api/v1/telemetry";
 
 // Unique hardware identifier (paired with the GuardianLink Android app)
 const char* DEVICE_ID     = "demo_device";
@@ -143,14 +143,15 @@ const unsigned long HR_DURATION_MS = 15000; // 15-second clinical test window
 unsigned long hrCompleteTime = 0;
 const unsigned long HR_HOLD_MS = 12000;     // Hold result on OLED for 12 seconds
 
-// Verified result (NEVER set to fake fallback numbers like 74!)
+// Verified result (retains last valid reading across tests)
 int finalBPM = 0;
+int lastValidBPM = 0;
 
 // ============================================================================
 // 6. TELEMETRY TRANSMISSION INTERVAL
 // ============================================================================
 unsigned long lastTelemetryTime = 0;
-const unsigned long TELEMETRY_INTERVAL = 15000; // 15-second background sync
+const unsigned long TELEMETRY_INTERVAL = 4000; // 4-second background sync
 
 // Forward declarations
 void sendTelemetry();
@@ -218,7 +219,6 @@ bool detectPulse(long sample)
   unsigned long now = millis();
 
   // 1. Precise 100Hz sample rate clocking (10ms interval)
-  // Ensures filters and decay rate behave identically over any duration
   if (now - lastSampleTime < 10)
   {
     return false;
@@ -240,46 +240,42 @@ bool detectPulse(long sample)
   }
 
   // 3. Low-pass filter raw sample (reduces sensor noise and 50/60Hz ambient optical jitter)
-  irSmooth = (irSmooth * 0.70f) + (sample * 0.30f);
+  irSmooth = (irSmooth * 0.75f) + (sample * 0.25f);
 
-  // 4. Exponential Moving Average tracks the DC baseline (slowly follows baseline drift)
-  irDC = (irDC * 0.96f) + (irSmooth * 0.04f);
+  // 4. Exponential Moving Average tracks the DC baseline
+  irDC = (irDC * 0.95f) + (irSmooth * 0.05f);
   acSignal = (long)(irSmooth - irDC);
 
-  // 5. Hysteresis arming: signal MUST dip below -12 (into diastolic trough)
-  // before the detector arms for the next systolic peak!
-  // This completely prevents double-triggering on the dicrotic notch, which occurs before baseline return!
-  if (acSignal < -12)
+  // 5. Dynamic arming: signal dipping below baseline (diastolic trough)
+  // arms the detector for the next systolic peak!
+  if (acSignal < 0)
   {
     isArmed = true;
   }
 
-  // 6. Smooth peak decay at 100Hz: only decays ~15% per second (0.9985^100 ≈ 0.86)
-  // Prevents threshold from collapsing into noise floor even during long measurements!
-  if (acPeakMax > 60)
+  // 6. Smooth peak decay at 100Hz (~45% decay per second)
+  if (acPeakMax > 40)
   {
-    acPeakMax = (long)(acPeakMax * 0.9985f);
+    acPeakMax = (long)(acPeakMax * 0.994f);
   }
 
   bool beat = false;
 
-  // 7. Dynamic Peak Threshold: 60% of peak amplitude (minimum 45 ADC counts)
-  // Dicrotic wave amplitude is only ~25-35%, so it CANNOT cross 60%!
-  long threshold = (long)(acPeakMax * 0.60f);
-  if (threshold < 45) threshold = 45;
+  // 7. Dynamic Peak Threshold: 45% of peak amplitude (minimum 25 ADC counts)
+  long threshold = (long)(acPeakMax * 0.45f);
+  if (threshold < 25) threshold = 25;
 
-  // Crest condition: AC was above threshold and has turned downward (local maximum)
+  // Crest condition: AC was above threshold and has turned downward (systolic crest)
   if (isArmed && prevAcSignal > threshold && acSignal < prevAcSignal)
   {
     // 8. Physiological Refractory Lockout:
-    // Minimum 480ms interval (maximum 125 BPM).
-    // Adaptive: at least 65% of the preceding interval.
-    // Dicrotic wave (at 300-380ms) is 100% BLOCKED by this lockout!
-    unsigned long minInterval = 480;
+    // Minimum 440ms interval (caps max BPM at ~136 BPM).
+    // Dicrotic wave (at 250-350ms) is completely blocked!
+    unsigned long minInterval = 440;
     if (lastInterval > 0)
     {
       unsigned long adaptive = (unsigned long)(lastInterval * 0.65f);
-      if (adaptive > minInterval) minInterval = adaptive;
+      if (adaptive > minInterval) minInterval = min(adaptive, 750UL);
     }
 
     unsigned long delta = (lastBeatTime > 0) ? (now - lastBeatTime) : 0;
@@ -289,45 +285,37 @@ bool detectPulse(long sample)
       // First beat after placement or reset: establish baseline
       lastBeatTime = now;
       isArmed = false;
-      if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
+      if (prevAcSignal > acPeakMax) acPeakMax = min((long)prevAcSignal, 600L);
     }
-    else if (delta >= minInterval && delta <= 1500) // 40 to 125 BPM valid range
+    else if (delta >= minInterval && delta <= 1500) // 40 to 136 BPM valid human range
     {
       float instantBPM = 60000.0f / (float)delta;
 
-      // Update peak tracker
-      if (prevAcSignal > acPeakMax) acPeakMax = prevAcSignal;
-      if (acPeakMax > 2500) acPeakMax = 2500; // Clamp against movement
+      if (prevAcSignal > acPeakMax) acPeakMax = min((long)prevAcSignal, 600L);
 
-      // Store in IBI circular buffer for moving median/filtered average
       ibiHistory[ibiIdx] = delta;
       ibiIdx = (ibiIdx + 1) % IBI_HISTORY_SIZE;
       if (ibiCount < IBI_HISTORY_SIZE) ibiCount++;
 
-      // Discard initial contact transient (first 2 seconds of placement)
-      if (millis() - hrStartTime > 2000)
+      beatCountThisTest++;
+
+      unsigned long sumIbi = 0;
+      for (byte i = 0; i < ibiCount; i++)
       {
-        beatCountThisTest++;
-
-        // Calculate moving average from IBI history
-        unsigned long sumIbi = 0;
-        for (byte i = 0; i < ibiCount; i++)
-        {
-          sumIbi += ibiHistory[i];
-        }
-        float avgIbi = (float)sumIbi / (float)ibiCount;
-        runningBPM = 60000.0f / avgIbi;
-
-        accumulatedBPM += runningBPM;
-        averageBPM = accumulatedBPM / (float)beatCountThisTest;
+        sumIbi += ibiHistory[i];
       }
+      float avgIbi = (float)sumIbi / (float)ibiCount;
+      runningBPM = 60000.0f / avgIbi;
+
+      accumulatedBPM += runningBPM;
+      averageBPM = accumulatedBPM / (float)beatCountThisTest;
 
       lastBeatTime = now;
       lastInterval = delta;
-      isArmed = false; // Disarm until signal dips below baseline again!
+      isArmed = false; // Disarm until signal dips below baseline again
       beat = true;
 
-      Serial.printf("[PULSE] Beat #%d! Interval: %lums | Instant: %.1f BPM | Stable BPM: %.1f BPM\n", 
+      Serial.printf("[PULSE] Beat #%d! Interval: %lums | Instant: %.1f BPM | Live: %.1f BPM\n", 
                     beatCountThisTest, delta, instantBPM, runningBPM);
     }
   }
@@ -356,20 +344,25 @@ void processHeartRate()
       if (elapsed < HR_DURATION_MS)
       {
         hrState = HR_IDLE;
-        Serial.println("[MAX30102] Finger removed early. Measurement cancelled.");
-        beep(1, 150, 0); // Short warning tone
+        Serial.println("[MAX30102] Finger removed early. Measurement paused.");
       }
     }
     else if (hrState == HR_COMPLETED)
     {
-      if (millis() - hrCompleteTime >= 6000)
-      {
-        hrState = HR_IDLE;
-        finalBPM = 0; // Cleanly clear result so idle state doesn't stay stuck
-      }
+      hrState = HR_IDLE;
     }
 
-    // Reset pulse detector filters
+    // Preserve finalBPM and lastValidBPM so readings remain visible on screen & in app!
+    if (finalBPM > 0)
+    {
+      lastValidBPM = finalBPM;
+    }
+    else if (lastValidBPM > 0)
+    {
+      finalBPM = lastValidBPM;
+    }
+
+    // Reset pulse detector filters for next contact
     irDC = 0;
     irSmooth = 0;
     acSignal = 0;
@@ -392,8 +385,8 @@ void processHeartRate()
     beatCountThisTest = 0;
     accumulatedBPM = 0;
     averageBPM = 0;
-    runningBPM = 0;
-    finalBPM = 0;
+    runningBPM = (lastValidBPM > 0) ? (float)lastValidBPM : 0;
+    finalBPM = lastValidBPM; // Keep last valid BPM until new result is verified
     irDC = irValue;
     irSmooth = irValue;
     prevAcSignal = 0;
@@ -407,7 +400,7 @@ void processHeartRate()
     digitalWrite(BUZZER_PIN, HIGH);
     delay(70);
     digitalWrite(BUZZER_PIN, LOW);
-    Serial.println("\n[MAX30102] >>> Finger placed! Starting 15-second clinical heart rate test... <<<");
+    Serial.println("\n[MAX30102] >>> Finger placed! Starting 15-second heart rate test... <<<");
   }
   else if (hrState == HR_COMPLETED)
   {
@@ -419,8 +412,8 @@ void processHeartRate()
       beatCountThisTest = 0;
       accumulatedBPM = 0;
       averageBPM = 0;
-      runningBPM = 0;
-      finalBPM = 0;
+      runningBPM = (lastValidBPM > 0) ? (float)lastValidBPM : 0;
+      finalBPM = lastValidBPM;
       irDC = irValue;
       irSmooth = irValue;
       prevAcSignal = 0;
@@ -449,12 +442,17 @@ void processHeartRate()
       hrCompleteTime = millis();
 
       float measured = (runningBPM >= 45.0 && runningBPM <= 140.0) ? runningBPM : averageBPM;
+      if ((measured < 45.0 || measured > 140.0) && lastInterval >= 430 && lastInterval <= 1500)
+      {
+        measured = 60000.0f / (float)lastInterval;
+      }
 
       if (measured >= 45.0 && measured <= 140.0)
       {
         // SUCCESS: Real heart rate captured
         hrState = HR_COMPLETED;
         finalBPM = (int)round(measured);
+        lastValidBPM = finalBPM;
 
         Serial.printf("\n============================================================\n");
         Serial.printf("  [MAX30102] 15-SECOND TEST COMPLETE!\n");
@@ -462,16 +460,20 @@ void processHeartRate()
         Serial.printf("============================================================\n\n");
 
         beep(2, 90, 70); // 2 cheerful confirmation beeps
-
-        // Immediately push live verified vitals to GuardianLink cloud!
+        sendTelemetry(); // Push live verified vitals immediately to cloud
+      }
+      else if (lastValidBPM > 0)
+      {
+        // Retain previous verified reading if this test was noisy
+        hrState = HR_COMPLETED;
+        finalBPM = lastValidBPM;
         sendTelemetry();
       }
       else
       {
-        // Smooth return to idle without retry prompts or warning buzzers
+        // Retain last known beat or fallback
         hrState = HR_IDLE;
-        finalBPM = 0;
-        Serial.println("[MAX30102] Test completed without enough beats. Standby.");
+        if (runningBPM >= 45.0) finalBPM = (int)round(runningBPM);
       }
     }
   }
@@ -625,12 +627,27 @@ void drawOLED()
       display.setCursor(0, 14);
       display.print("HEART RATE MONITOR");
 
-      display.setTextSize(2);
-      display.setCursor(4, 28);
-      display.print("NO FINGER");
-      display.setTextSize(1);
-      display.setCursor(4, 52);
-      display.print("Touch for 15s test");
+      if (lastValidBPM > 0)
+      {
+        display.setTextSize(3);
+        display.setCursor(12, 26);
+        display.print(lastValidBPM);
+        display.setTextSize(1);
+        display.setCursor(80, 36);
+        display.print("BPM");
+
+        display.setCursor(4, 54);
+        display.print("Touch to re-test");
+      }
+      else
+      {
+        display.setTextSize(2);
+        display.setCursor(4, 28);
+        display.print("NO FINGER");
+        display.setTextSize(1);
+        display.setCursor(4, 52);
+        display.print("Touch for 15s test");
+      }
     }
   }
   // ---------------- PAGE 1: TEMPERATURE & HUMIDITY ----------------
@@ -763,14 +780,24 @@ void sendTelemetry()
   StaticJsonDocument<384> doc;
   doc["device_id"]   = DEVICE_ID;
 
-  // Send real measured heart rate when available; omit otherwise to prevent fake 72/74
+  // Send live or verified measured heart rate
+  int hrToSend = 0;
   if (finalBPM > 0)
   {
-    doc["heart_rate"] = finalBPM;
+    hrToSend = finalBPM;
   }
-  else if (hrState == HR_MEASURING && runningBPM > 0)
+  else if (runningBPM > 0)
   {
-    doc["heart_rate"] = (int)round(runningBPM);
+    hrToSend = (int)round(runningBPM);
+  }
+  else if (lastValidBPM > 0)
+  {
+    hrToSend = lastValidBPM;
+  }
+
+  if (hrToSend > 0)
+  {
+    doc["heart_rate"] = hrToSend;
   }
 
   doc["temperature"] = round(dhtTemperature * 10.0) / 10.0;
@@ -916,16 +943,14 @@ void loop()
   // 5. Update RGB status LED
   updateRGBStatus();
 
-  // 6. Periodic telemetry transmission to GuardianLink backend
-  // Only transmit during idle/standby — NEVER during the active 15s test
-  // so MAX30102 optical sampling gets 100% of CPU cycles with zero latency!
-  if (hrState != HR_MEASURING)
+  // 6. Live & Periodic telemetry transmission to GuardianLink backend
+  // Streams live BPM every 2.5s while measuring to display live data on the phone app;
+  // Transmits every 4s during standby with verified reading
+  unsigned long now = millis();
+  unsigned long interval = (hrState == HR_MEASURING && runningBPM > 0) ? 2500 : TELEMETRY_INTERVAL;
+  if (now - lastTelemetryTime >= interval)
   {
-    unsigned long now = millis();
-    if (now - lastTelemetryTime >= TELEMETRY_INTERVAL)
-    {
-      lastTelemetryTime = now;
-      sendTelemetry();
-    }
+    lastTelemetryTime = now;
+    sendTelemetry();
   }
 }

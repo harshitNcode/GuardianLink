@@ -23,6 +23,11 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
     lat = device.last_latitude
     lon = device.last_longitude
 
+    # Ignore legacy mock Delhi seed coordinates (28.6139, 77.2090)
+    if lat is not None and abs(lat - 28.6139) < 0.01:
+        lat = None
+        lon = None
+
     gps_str = f"{lat}, {lon}" if lat and lon else "--"
     
     # Calculate online status dynamically: mark Offline if no telemetry received for > 40 seconds
@@ -121,7 +126,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
             device.battery = payload.battery
         if payload.network:
             device.network = payload.network
-        if payload.heart_rate is not None:
+        if payload.heart_rate is not None and payload.heart_rate > 0:
             device.heart_rate = payload.heart_rate
         if payload.temperature is not None:
             device.temperature = payload.temperature
@@ -134,6 +139,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
     # 2. Add history log
     current_lat = payload.latitude if payload.latitude is not None else (device.last_latitude or 0.0)
     current_lon = payload.longitude if payload.longitude is not None else (device.last_longitude or 0.0)
+    effective_hr = payload.heart_rate if (payload.heart_rate is not None and payload.heart_rate > 0) else device.heart_rate
     log = TelemetryLog(
         device_id=target_device_id,
         latitude=current_lat,
@@ -141,7 +147,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         battery=payload.battery or "100%",
         network=payload.network or "Wi-Fi",
         sos=payload.sos or False,
-        heart_rate=payload.heart_rate,
+        heart_rate=effective_hr,
         temperature=payload.temperature,
         humidity=payload.humidity,
         timestamp=datetime.datetime.utcnow()

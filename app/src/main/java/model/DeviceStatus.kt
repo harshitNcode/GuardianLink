@@ -25,6 +25,7 @@ data class DeviceStatus(
         get() {
             val lat = rawLatitude ?: gps.split(",").getOrNull(0)?.trim()?.toDoubleOrNull()
             if (lat == null || lat == 0.0) return null
+            if (Math.abs(lat - 28.6139) < 0.05) return null
             return lat
         }
 
@@ -32,6 +33,7 @@ data class DeviceStatus(
         get() {
             val lon = rawLongitude ?: gps.split(",").getOrNull(1)?.trim()?.toDoubleOrNull()
             if (lon == null || lon == 0.0) return null
+            if (Math.abs(lon - 77.2090) < 0.05) return null
             return lon
         }
 

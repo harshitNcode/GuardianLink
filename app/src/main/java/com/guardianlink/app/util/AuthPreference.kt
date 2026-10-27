@@ -151,17 +151,26 @@ object AuthPreference {
         val lon = if (lonBits != 0L) java.lang.Double.longBitsToDouble(lonBits) else null
         val ts = prefs.getLong(KEY_CACHED_TIMESTAMP, 0L)
 
+        // Purge legacy mock Delhi coordinates (28.6139, 77.2090) from cached disk storage
+        val isMockDelhi = (lat != null && Math.abs(lat - 28.6139) < 0.05) || gps.contains("28.6139")
+        val cleanLat = if (isMockDelhi) null else lat
+        val cleanLon = if (isMockDelhi) null else lon
+        val cleanGps = if (isMockDelhi) "--" else gps
+        if (isMockDelhi) {
+            prefs.edit().remove(KEY_CACHED_LAT).remove(KEY_CACHED_LON).remove(KEY_CACHED_GPS).apply()
+        }
+
         return com.guardianlink.app.model.DeviceStatus(
             battery = bat,
-            gps = gps,
+            gps = cleanGps,
             network = "Wi-Fi",
             device = "Offline",
             sos = false,
             heartRate = hr,
             temperature = temp,
             humidity = hum,
-            rawLatitude = lat,
-            rawLongitude = lon,
+            rawLatitude = cleanLat,
+            rawLongitude = cleanLon,
             lastUpdatedTimestamp = ts
         )
     }

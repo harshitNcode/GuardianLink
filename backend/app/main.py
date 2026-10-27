@@ -50,6 +50,7 @@ def startup_seed_demo_device():
     from app.models.device import Device
     from app.models.geofence import GeofenceZone
     from app.models.alert import Alert
+    from app.models.telemetry import TelemetryLog
     db = SessionLocal()
     try:
         # 1. Permanently remove any legacy mock geofences by name
@@ -59,6 +60,14 @@ def startup_seed_demo_device():
             GeofenceZone.name.like("%Purana%") |
             GeofenceZone.name.like("%Test Zone%")
         ).delete(synchronize_session=False)
+
+        # 2. Reset devices that have legacy mock Delhi seed coordinates (28.6139, 77.2090)
+        all_devs = db.query(Device).all()
+        for dev in all_devs:
+            if dev.last_latitude and abs(dev.last_latitude - 28.6139) < 0.05:
+                dev.last_latitude = None
+                dev.last_longitude = None
+                dev.status = "Waiting for signal"
 
         demo_dev = db.query(Device).filter(Device.device_id == "demo_device").first()
         if not demo_dev:
@@ -74,6 +83,9 @@ def startup_seed_demo_device():
                 updated_at=None
             )
             db.add(demo_dev)
+        elif demo_dev.last_latitude and abs(demo_dev.last_latitude - 28.6139) < 0.05:
+            demo_dev.last_latitude = None
+            demo_dev.last_longitude = None
 
         # 3. Purge dummy test alerts referencing Delhi
         db.query(Alert).filter(
@@ -83,8 +95,13 @@ def startup_seed_demo_device():
             (Alert.latitude.between(28.0, 29.5) & Alert.longitude.between(76.5, 78.0))
         ).delete(synchronize_session=False)
 
+        # 4. Purge dummy telemetry logs with mock Delhi coordinates
+        db.query(TelemetryLog).filter(
+            TelemetryLog.latitude.between(28.60, 28.63) & TelemetryLog.longitude.between(77.20, 77.23)
+        ).delete(synchronize_session=False)
+
         db.commit()
-        logger.info("Startup initialized: Delhi coordinates, dummy alerts, and dummy safe zones purged")
+        logger.info("Startup initialized: Mock Delhi coordinates, dummy alerts, and dummy safe zones purged")
     except Exception as e:
         logger.error(f"Error initializing demo device: {e}")
     finally:

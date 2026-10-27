@@ -48,15 +48,28 @@ class DeviceViewModel : ViewModel() {
 
     private fun mergeStatusWithCache(updated: DeviceStatus) {
         _status.update { prev ->
+            // Purge mock Delhi seed coordinates (28.6139, 77.2090)
+            val cleanUpdatedLat = if (updated.rawLatitude != null && Math.abs(updated.rawLatitude - 28.6139) < 0.05) null else updated.rawLatitude
+            val cleanUpdatedLon = if (updated.rawLongitude != null && Math.abs(updated.rawLongitude - 77.2090) < 0.05) null else updated.rawLongitude
+            val cleanPrevLat = if (prev.rawLatitude != null && Math.abs(prev.rawLatitude - 28.6139) < 0.05) null else prev.rawLatitude
+            val cleanPrevLon = if (prev.rawLongitude != null && Math.abs(prev.rawLongitude - 77.2090) < 0.05) null else prev.rawLongitude
+            val cleanGps = if (updated.gps.isNotBlank() && updated.gps != "--" && !updated.gps.contains("28.6139")) {
+                updated.gps
+            } else if (prev.gps.isNotBlank() && prev.gps != "--" && !prev.gps.contains("28.6139")) {
+                prev.gps
+            } else {
+                "--"
+            }
+
             val merged = updated.copy(
                 // Preserve previous valid vitals if the new packet is zero or null (e.g. disconnected)
                 heartRate = if (updated.heartRate > 0) updated.heartRate else prev.heartRate,
                 temperature = if (updated.temperature > 0f) updated.temperature else prev.temperature,
                 humidity = if (updated.humidity > 0f) updated.humidity else prev.humidity,
                 battery = if (updated.battery.isNotBlank() && updated.battery != "--") updated.battery else prev.battery,
-                gps = if (updated.gps.isNotBlank() && updated.gps != "--") updated.gps else prev.gps,
-                rawLatitude = updated.rawLatitude ?: prev.rawLatitude,
-                rawLongitude = updated.rawLongitude ?: prev.rawLongitude,
+                gps = cleanGps,
+                rawLatitude = cleanUpdatedLat ?: cleanPrevLat,
+                rawLongitude = cleanUpdatedLon ?: cleanPrevLon,
                 lastUpdatedTimestamp = if (updated.lastUpdatedTimestamp > 0L) updated.lastUpdatedTimestamp else prev.lastUpdatedTimestamp
             )
             appContext?.let { ctx ->
