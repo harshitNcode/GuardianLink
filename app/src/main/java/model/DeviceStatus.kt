@@ -11,6 +11,7 @@ data class DeviceStatus(
     val humidity: Float = 0.0f,
     val rawLatitude: Double? = null,
     val rawLongitude: Double? = null,
+    val ip: String? = null,
     val lastUpdatedTimestamp: Long = 0L
 ) {
     // Device is considered disconnected if backend status is Offline or no packet received for > 40s

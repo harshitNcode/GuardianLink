@@ -13,6 +13,7 @@ class TelemetryCreate(BaseModel):
     heart_rate: Optional[int] = Field(None, example=72, description="Heart rate in BPM")
     temperature: Optional[float] = Field(None, example=36.6, description="Body temperature in Celsius")
     humidity: Optional[float] = Field(None, example=50.0, description="Relative humidity percentage")
+    ip: Optional[str] = Field(None, example="192.168.1.50", description="Local Wi-Fi IP of ESP32")
 
 
 class TelemetryResponse(BaseModel):
@@ -50,6 +51,7 @@ class DeviceStatusResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     gps: str  # Format: "12.9716, 77.5946" compatible with Android DeviceStatus
+    ip: Optional[str] = None  # Local Wi-Fi IP of ESP32 board
     buzzer: bool = False  # Activates 5-second beep on ESP32 board
     breach: bool = False  # True when device is currently outside safe zone
     updated_at: Optional[datetime] = None

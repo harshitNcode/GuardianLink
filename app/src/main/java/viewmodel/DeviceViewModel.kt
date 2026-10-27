@@ -84,7 +84,8 @@ class DeviceViewModel : ViewModel() {
     }
 
     fun triggerBuzzerAlarm(onComplete: (() -> Unit)? = null) {
-        repository.triggerBuzzerAlarm(deviceId, onComplete)
+        val currentIp = _status.value.ip
+        repository.triggerBuzzerAlarm(deviceId, currentIp, onComplete)
     }
 
     fun refresh() {

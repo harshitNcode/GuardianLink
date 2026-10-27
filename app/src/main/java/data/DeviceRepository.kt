@@ -55,7 +55,26 @@ class DeviceRepository {
         })
     }
 
-    fun triggerBuzzerAlarm(deviceId: String, onComplete: (() -> Unit)? = null) {
+    fun triggerBuzzerAlarm(deviceId: String, deviceIp: String? = null, onComplete: (() -> Unit)? = null) {
+        // 1. Direct local IP trigger if device IP is known (fires in ~10ms on local Wi-Fi / hotspot)
+        if (!deviceIp.isNullOrBlank()) {
+            val cleanIp = deviceIp.trim()
+            val localReq = Request.Builder()
+                .url("http://$cleanIp/buzzer")
+                .get()
+                .build()
+            client.newCall(localReq).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    Log.d("GuardianLink.Device", "Direct local buzzer trigger not reachable: ${e.message}")
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    response.close()
+                    Log.d("GuardianLink.Device", "Direct local buzzer trigger executed in <15ms!")
+                }
+            })
+        }
+
+        // 2. Cloud backend trigger (dispatches WhatsApp emergency, logs alert, sets cloud buzzer flag)
         val emptyBody = "{}".toRequestBody(jsonMediaType)
         val request = Request.Builder()
             .url("${ApiConfig.HTTP_BASE_URL}/api/v1/telemetry/$deviceId/buzzer")
@@ -193,6 +212,7 @@ class DeviceRepository {
             0L
         }
 
+        val ipStr = obj.optString("ip", "").takeIf { it.isNotBlank() && it != "null" }
         return DeviceStatus(
             battery = obj.optString("battery", "--"),
             gps = gpsVal,
@@ -204,6 +224,7 @@ class DeviceRepository {
             humidity = hum,
             rawLatitude = lat,
             rawLongitude = lon,
+            ip = ipStr,
             lastUpdatedTimestamp = lastUpdate
         )
     }

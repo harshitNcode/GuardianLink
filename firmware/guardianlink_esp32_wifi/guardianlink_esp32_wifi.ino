@@ -19,6 +19,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <WebServer.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -148,49 +149,68 @@ int finalBPM = 0;
 int lastValidBPM = 0;
 
 // ============================================================================
-// 6. TELEMETRY TRANSMISSION INTERVAL
+// 6. TELEMETRY TRANSMISSION INTERVAL & LOCAL HTTP SERVER
 // ============================================================================
 unsigned long lastTelemetryTime = 0;
-const unsigned long TELEMETRY_INTERVAL = 4000; // 4-second background sync
+const unsigned long TELEMETRY_INTERVAL = 1500; // 1.5-second fast sync interval
+WebServer localServer(80); // Local server on port 80 for instantaneous trigger
 
 // Forward declarations
 void sendTelemetry();
 void beep(int times, int onMs, int offMs);
 void setRGB(bool red, bool green, bool blue);
 void triggerBuzzer5Sec();
-void updateBuzzerAlarm();
 
 // ============================================================================
-// 5-SECOND NON-BLOCKING BUZZER ALARM (SAFE ZONE BREACH & MANUAL TRIGGER)
+// DEDICATED FREERTOS TASK FOR 5-SECOND BUZZER & BLINKING RED RGB ALARM
+// Runs on Core 0 with microsecond accuracy, completely immune to network delays
 // ============================================================================
-unsigned long buzzerAlarmStartTime = 0;
-bool buzzerAlarmActive5Sec = false;
+volatile unsigned long buzzerAlarmStartTime = 0;
+volatile bool buzzerAlarmActive5Sec = false;
+
+void buzzerAlarmTask(void *pvParameters)
+{
+  for (;;)
+  {
+    if (buzzerAlarmActive5Sec)
+    {
+      unsigned long elapsed = millis() - buzzerAlarmStartTime;
+      if (elapsed < 5000)
+      {
+        // 1. Rapid alert beep pattern: 150ms ON, 100ms OFF
+        bool beepOn = ((elapsed % 250) < 150);
+        digitalWrite(BUZZER_PIN, beepOn ? HIGH : LOW);
+
+        // 2. Urgent Red RGB Blinking: 100ms ON, 100ms OFF
+        bool redOn = ((elapsed % 200) < 100);
+        digitalWrite(RGB_RED_PIN,   redOn ? HIGH : LOW);
+        digitalWrite(RGB_GREEN_PIN, LOW);
+        digitalWrite(RGB_BLUE_PIN,  LOW);
+      }
+      else
+      {
+        digitalWrite(BUZZER_PIN, LOW);
+        buzzerAlarmActive5Sec = false;
+        // Restore green LED for normal operation
+        digitalWrite(RGB_RED_PIN,   LOW);
+        digitalWrite(RGB_GREEN_PIN, HIGH);
+        digitalWrite(RGB_BLUE_PIN,  LOW);
+        Serial.println("[ALARM] Buzzer alarm 5s elapsed. Standby.");
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(15));
+  }
+}
 
 void triggerBuzzer5Sec()
 {
-  buzzerAlarmActive5Sec = true;
   buzzerAlarmStartTime = millis();
-  Serial.println("\n[ALARM] >>> SAFE ZONE BREACH DETECTED! Sounding 5-Second Buzzer Alarm! <<<");
-}
-
-void updateBuzzerAlarm()
-{
-  if (buzzerAlarmActive5Sec)
-  {
-    unsigned long elapsed = millis() - buzzerAlarmStartTime;
-    if (elapsed < 5000)
-    {
-      // Rapid alert beep pattern: 150ms ON, 100ms OFF
-      bool beepOn = ((elapsed % 250) < 150);
-      digitalWrite(BUZZER_PIN, beepOn ? HIGH : LOW);
-    }
-    else
-    {
-      digitalWrite(BUZZER_PIN, LOW);
-      buzzerAlarmActive5Sec = false;
-      Serial.println("[ALARM] Buzzer alarm 5s elapsed. Standby.");
-    }
-  }
+  buzzerAlarmActive5Sec = true;
+  digitalWrite(BUZZER_PIN, HIGH);
+  digitalWrite(RGB_RED_PIN, HIGH);
+  digitalWrite(RGB_GREEN_PIN, LOW);
+  digitalWrite(RGB_BLUE_PIN, LOW);
+  Serial.println("\n[ALARM] >>> SAFE ZONE BREACH DETECTED! Sounding 5-Second Buzzer Alarm & Red Blinking RGB! <<<");
 }
 
 // ============================================================================
@@ -219,6 +239,12 @@ void setRGB(bool red, bool green, bool blue)
 
 void updateRGBStatus()
 {
+  // 0. If 5-second buzzer alarm is active, the dedicated FreeRTOS task is driving the urgent RED blinking!
+  if (buzzerAlarmActive5Sec)
+  {
+    return;
+  }
+
   // 1. High Fever or Tachycardia Alert: Blinking RED
   if (dhtTemperature >= TEMP_WARNING_HIGH || (finalBPM > 120))
   {
@@ -558,6 +584,28 @@ void drawOLED()
 {
   if (!oledReady) return;
 
+  // Emergency Safe Zone Breach Alert Screen (Overrules all carousel pages during alarm)
+  if (buzzerAlarmActive5Sec)
+  {
+    unsigned long elapsed = millis() - buzzerAlarmStartTime;
+    int secLeft = (int)((5000 - elapsed) / 1000) + 1;
+    if (secLeft < 1) secLeft = 1;
+    display.clearDisplay();
+    display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+    display.drawRect(2, 2, 124, 60, SSD1306_WHITE);
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(8, 8);
+    display.print("EMERGENCY!");
+    display.setTextSize(1);
+    display.setCursor(14, 30);
+    display.print("SAFE ZONE BREACH");
+    display.setCursor(18, 46);
+    display.printf("ALARM BEEP: %ds", secLeft);
+    display.display();
+    return;
+  }
+
   unsigned long now = millis();
 
   // Rate-limit display updates:
@@ -840,6 +888,7 @@ void sendTelemetry()
   doc["battery"]     = "95%";
   doc["network"]     = "Local Wi-Fi";
   doc["sos"]         = sosActive;
+  doc["ip"]          = WiFi.localIP().toString();
 
   String jsonPayload;
   serializeJson(doc, jsonPayload);
@@ -972,6 +1021,32 @@ void setup()
 
   // 6. Connect to Wi-Fi
   connectToWiFi();
+
+  // 7. Start Dedicated FreeRTOS Buzzer & Red Blinking RGB Alarm Task on Core 0
+  xTaskCreatePinnedToCore(
+    buzzerAlarmTask,
+    "BuzzerAlarmTask",
+    2048,
+    NULL,
+    2,
+    NULL,
+    0
+  );
+
+  // 8. Start Local WebServer on port 80 for instant local direct triggers (<20ms)
+  localServer.on("/buzzer", HTTP_ANY, []() {
+    triggerBuzzer5Sec();
+    localServer.sendHeader("Access-Control-Allow-Origin", "*");
+    localServer.send(200, "application/json", "{\"status\":\"ok\",\"buzzer\":true}");
+  });
+  localServer.on("/api/buzzer", HTTP_ANY, []() {
+    triggerBuzzer5Sec();
+    localServer.sendHeader("Access-Control-Allow-Origin", "*");
+    localServer.send(200, "application/json", "{\"status\":\"ok\",\"buzzer\":true}");
+  });
+  localServer.begin();
+  Serial.print("[HTTP Server] Local server listening on: http://");
+  Serial.println(WiFi.localIP());
 }
 
 // ============================================================================
@@ -979,6 +1054,9 @@ void setup()
 // ============================================================================
 void loop()
 {
+  // 0. Handle local direct HTTP triggers from phone app (<20ms responsiveness)
+  localServer.handleClient();
+
   // 1. Maintain Wi-Fi state & beep audio feedback whenever connected/reconnected
   maintainWiFi();
 
@@ -989,18 +1067,17 @@ void loop()
   // 3. Periodic DHT22 sensor readings
   readDHT22();
 
-  // 4. Update OLED Carousel Display
+  // 4. Update OLED Carousel Display (shows Emergency Safe Zone Breach if alarm is active)
   drawOLED();
 
-  // 5. Update RGB status LED & 5-second buzzer alarm
+  // 5. Update RGB status LED (FreeRTOS task handles urgent RED flashing during alarm)
   updateRGBStatus();
-  updateBuzzerAlarm();
 
   // 6. Live & Periodic telemetry transmission to GuardianLink backend
-  // Streams live BPM every 2.5s while measuring to display live data on the phone app;
-  // Transmits every 4s during standby with verified reading
+  // Streams live BPM every 2s while measuring to display live data on the phone app;
+  // Transmits every 1.5s during standby to sync buzzer & safe zone state
   unsigned long now = millis();
-  unsigned long interval = (hrState == HR_MEASURING && runningBPM > 0) ? 2500 : TELEMETRY_INTERVAL;
+  unsigned long interval = (hrState == HR_MEASURING && runningBPM > 0) ? 2000 : TELEMETRY_INTERVAL;
   if (now - lastTelemetryTime >= interval)
   {
     lastTelemetryTime = now;

@@ -1,4 +1,5 @@
 import datetime
+import time
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -13,6 +14,25 @@ from app.services.notification_service import dispatch_emergency_notification
 router = APIRouter(prefix="/api/v1/telemetry", tags=["Telemetry & Devices"])
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+# Fast in-memory buzzer state tracker (immediate response, zero database query overhead)
+ACTIVE_BUZZER_TIMESTAMPS: dict = {}
+DEVICE_LOCAL_IP_MAP: dict = {}
+
+
+def trigger_device_buzzer(device_id: str):
+    now = time.time()
+    ACTIVE_BUZZER_TIMESTAMPS[device_id] = now
+    ACTIVE_BUZZER_TIMESTAMPS["demo_device"] = now
+
+
+def is_device_buzzer_active(device_id: str) -> bool:
+    now = time.time()
+    ts = max(
+        ACTIVE_BUZZER_TIMESTAMPS.get(device_id, 0.0),
+        ACTIVE_BUZZER_TIMESTAMPS.get("demo_device", 0.0)
+    )
+    return (now - ts) < 25.0  # Active for 25 seconds
 
 
 def get_current_ist_time_str() -> str:
@@ -72,24 +92,26 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
             if past_hum and past_hum[0]:
                 hum = past_hum[0]
 
-        # Check if safe zone breach or emergency buzzer was triggered within last 20s
-        recent_alert = db.query(Alert).filter(
-            Alert.device_id == device.device_id,
-            Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=20)
-        ).order_by(Alert.created_at.desc()).first()
+        # Check active buzzer state from in-memory triggers or recent database alerts
+        is_buzzer = is_device_buzzer_active(device.device_id) or device.sos
+        is_breached = is_device_buzzer_active(device.device_id)
 
-        is_buzzer = False
-        is_breached = False
-        if recent_alert:
-            if "Breach" in recent_alert.title or "Safe Zone" in recent_alert.title or recent_alert.type in ["warning", "danger"]:
-                is_buzzer = True
-                is_breached = True
-        if device.sos:
-            is_buzzer = True
+        if not is_buzzer:
+            recent_alert = db.query(Alert).filter(
+                Alert.device_id == device.device_id,
+                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=25)
+            ).order_by(Alert.created_at.desc()).first()
+
+            if recent_alert:
+                if "Breach" in recent_alert.title or "Safe Zone" in recent_alert.title or recent_alert.type in ["warning", "danger"]:
+                    is_buzzer = True
+                    is_breached = True
 
     else:
-        is_buzzer = device.sos
-        is_breached = False
+        is_buzzer = is_device_buzzer_active(device.device_id) or device.sos
+        is_breached = is_device_buzzer_active(device.device_id)
+
+    dev_ip = DEVICE_LOCAL_IP_MAP.get(device.device_id) or DEVICE_LOCAL_IP_MAP.get("demo_device")
 
     return {
         "device_id": device.device_id,
@@ -104,6 +126,7 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
         "latitude": lat,
         "longitude": lon,
         "gps": gps_str,
+        "ip": dev_ip,
         "buzzer": is_buzzer,
         "breach": is_breached,
         "updated_at": device.updated_at.isoformat() if device.updated_at else None
@@ -122,6 +145,9 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
     """
     # 1. Upsert Device (auto-map "string" placeholder from Swagger to demo_device)
     target_device_id = "demo_device" if (payload.device_id == "string" or not payload.device_id) else payload.device_id
+    if hasattr(payload, "ip") and payload.ip:
+        DEVICE_LOCAL_IP_MAP[target_device_id] = payload.ip
+        DEVICE_LOCAL_IP_MAP["demo_device"] = payload.ip
     device = db.query(Device).filter(Device.device_id == target_device_id).first()
     if not device:
         device = Device(
@@ -371,9 +397,11 @@ def get_latest_device_status(device_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{device_id}/buzzer", response_model=DeviceStatusResponse)
-async def trigger_device_buzzer(device_id: str, db: Session = Depends(get_db)):
+async def trigger_buzzer_endpoint(device_id: str, db: Session = Depends(get_db)):
     """Trigger the 5-second buzzer alarm on the ESP32 board and log a safe zone breach alert."""
     target_device_id = "demo_device" if (device_id == "string" or not device_id) else device_id
+    trigger_device_buzzer(target_device_id)
+
     device = db.query(Device).filter(Device.device_id == target_device_id).first()
     if not device:
         device = Device(
@@ -417,6 +445,14 @@ async def trigger_device_buzzer(device_id: str, db: Session = Depends(get_db)):
     status_dict["breach"] = True
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
     return DeviceStatusResponse(**status_dict)
+
+
+@router.get("/{device_id}/buzzer-check")
+def check_device_buzzer_status(device_id: str):
+    """Ultra-fast endpoint for ESP32 to poll buzzer/breach alarm state in milliseconds without DB overhead."""
+    target = "demo_device" if (device_id == "string" or not device_id) else device_id
+    active = is_device_buzzer_active(target)
+    return {"buzzer": active, "breach": active}
 
 
 @router.get("/{device_id}/history", response_model=List[TelemetryResponse])
