@@ -177,13 +177,11 @@ void buzzerAlarmTask(void *pvParameters)
       unsigned long elapsed = millis() - buzzerAlarmStartTime;
       if (elapsed < 5000)
       {
-        // 1. Rapid alert beep pattern: 150ms ON, 100ms OFF
-        bool beepOn = ((elapsed % 250) < 150);
-        digitalWrite(BUZZER_PIN, beepOn ? HIGH : LOW);
+        // 1. Buzzer active continuously for 5 seconds irrespective of anything
+        digitalWrite(BUZZER_PIN, HIGH);
 
-        // 2. Urgent Red RGB Blinking: 100ms ON, 100ms OFF
-        bool redOn = ((elapsed % 200) < 100);
-        digitalWrite(RGB_RED_PIN,   redOn ? HIGH : LOW);
+        // 2. Continuous Solid Red LED for 5 seconds
+        digitalWrite(RGB_RED_PIN,   HIGH);
         digitalWrite(RGB_GREEN_PIN, LOW);
         digitalWrite(RGB_BLUE_PIN,  LOW);
       }

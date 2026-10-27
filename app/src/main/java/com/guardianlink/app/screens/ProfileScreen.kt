@@ -301,7 +301,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     LiquidProfileDetailRow(icon = Icons.Default.Phone, label = "Phone", value = profile.phoneNumber.ifBlank { "Not set (Tap Settings)" }, isDark = isDark)
                     Spacer(modifier = Modifier.height(12.dp))
-                    LiquidProfileDetailRow(icon = Icons.Default.ContactPhone, label = "Emergency Contact (WhatsApp SOS)", value = profile.emergencyContact.ifBlank { "Not set (Tap Settings)" }, isDark = isDark)
+                    LiquidProfileDetailRow(icon = Icons.Default.ContactPhone, label = "Emergency Contact", value = profile.emergencyContact.ifBlank { "Not set (Tap Settings)" }, isDark = isDark)
                     Spacer(modifier = Modifier.height(12.dp))
                     LiquidProfileDetailRow(icon = Icons.Default.Devices, label = "Paired Device", value = profile.deviceId.ifBlank { "demo_device" }, isDark = isDark)
                     Spacer(modifier = Modifier.height(12.dp))
@@ -433,7 +433,7 @@ fun ProfileScreen(
                 OutlinedTextField(
                     value = settingsEmergencyContact,
                     onValueChange = { settingsEmergencyContact = it },
-                    label = { Text("Emergency Contact (WhatsApp SOS)") },
+                    label = { Text("Emergency Contact") },
                     placeholder = { Text("e.g. +91 91234 56789") },
                     leadingIcon = { Icon(Icons.Default.ContactPhone, contentDescription = null, tint = PrimaryBlue) },
                     singleLine = true,
@@ -591,75 +591,7 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // SECTION 3: WHATSAPP AUTO-DISPATCH (BACKGROUND SENDING)
-                Text(
-                    text = "WHATSAPP SOS DISPATCH",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    color = if (isDark) LiquidNeonCyan else PrimaryBlue
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.85f),
-                    border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.1f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF25D366).copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                @Suppress("DEPRECATION")
-                                Icon(Icons.Default.Send, contentDescription = null, tint = Color(0xFF25D366), modifier = Modifier.size(20.dp))
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "WhatsApp SOS Dispatch",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = if (isDark) Color.White else TextPrimary
-                                )
-                                Text(
-                                    text = "Dispatches SOS alert & live GPS coordinates",
-                                    fontSize = 11.sp,
-                                    color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        OutlinedTextField(
-                            value = settingsCallMeBotKey,
-                            onValueChange = { settingsCallMeBotKey = it },
-                            label = { Text("CallMeBot API Key (Direct Cloud WhatsApp)") },
-                            placeholder = { Text("e.g. 1234567 (Optional)") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = "Tip: When SOS is triggered, your emergency alert and live GPS location link are prepared for your emergency contact. With a CallMeBot key, alerts can also be transmitted via Cloud Gateway.",
-                            fontSize = 11.sp,
-                            color = if (isDark) Color.White.copy(alpha = 0.65f) else TextSecondary
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // SECTION 4: THEME & DISPLAY
+                // SECTION 3: THEME & DISPLAY
                 Text(
                     text = "APPEARANCE & THEME",
                     fontSize = 11.sp,

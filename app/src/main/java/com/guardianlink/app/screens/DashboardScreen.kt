@@ -1094,8 +1094,41 @@ fun DashboardScreen(
                             onClick = { navigateToTab("alerts") }
                         )
                     }
+                }
+            }
 
-                    
+            // Simple "Out of safe Zone" Direct Button
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp)
+                ) {
+                    LiquidPillButton(
+                        text = "OUT OF SAFE ZONE",
+                        icon = Icons.Default.Warning,
+                        onClick = {
+                            val currentLat = status.latitude ?: 0.0
+                            val currentLng = status.longitude ?: 0.0
+
+                            // 1. Instantly log alert to AlertViewModel (displayed in Alert page & Recent Activity)
+                            alertViewModel.triggerOutOfSafeZoneAlert(currentLat, currentLng) {
+                                alertViewModel.refresh()
+                            }
+
+                            // 2. Sound buzzer for 5s continuously and turn LED red for 5s
+                            deviceViewModel.triggerBuzzerAlarm()
+
+                            android.widget.Toast.makeText(
+                                context,
+                                "🚨 'Out of safe Zone' alert triggered! Buzzer & Red LED active for 5s.",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        variant = LiquidButtonVariant.EMERGENCY,
+                        height = 50.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 
@@ -1227,25 +1260,27 @@ fun DashboardScreen(
                 LiquidPillButton(
                     text = "CONFIRM SOS",
                     onClick = {
-                        val targetPhone = userProfile.emergencyContact.ifBlank { com.guardianlink.app.util.AuthPreference.getEmergencyContact(context) }
+                        val targetPhone = userProfile.emergencyContact.ifBlank {
+                            com.guardianlink.app.util.AuthPreference.getEmergencyContact(context).ifBlank {
+                                contactsList.firstOrNull()?.phone ?: ""
+                            }
+                        }
                         showSosConfirmDialog = false
                         isSosTriggering = true
 
-                        // 1. Log alert in backend and update UI
+                        // 1. Log alert in backend and update UI (Alerts tab & Recent Activity)
                         alertViewModel.triggerSOS {
                             alertViewModel.refresh()
                             isSosTriggering = false
                         }
 
-                        // 2. Dispatch Emergency Alert (Background SMS + WhatsApp) to saved contact
-                        if (targetPhone.isNotBlank()) {
-                            com.guardianlink.app.util.EmergencyDispatcher.dispatchEmergencyAlert(
-                                context = context,
-                                phoneNumber = targetPhone,
-                                latitude = status.latitude,
-                                longitude = status.longitude
-                            )
-                        }
+                        // 2. Dispatch Emergency Alert to WhatsApp
+                        com.guardianlink.app.util.EmergencyDispatcher.dispatchEmergencyAlert(
+                            context = context,
+                            phoneNumber = targetPhone,
+                            latitude = status.latitude,
+                            longitude = status.longitude
+                        )
                     },
                     variant = LiquidButtonVariant.EMERGENCY,
                     height = 46.dp

@@ -1287,29 +1287,6 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.Start
             ) {
-                // Out-of-Safe-Zone Button — Direct trigger, no conditions checked
-                LiquidGlassCircleButton(
-                    onClick = {
-                        deviceViewModel.triggerBuzzerAlarm()
-                        android.widget.Toast.makeText(
-                            context,
-                            "🚨 Buzzer Activated! Beeping for 5 seconds with Red LED.",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    },
-                    size = 52.dp,
-                    containerColor = LiquidRubyEmergency,
-                    contentColor = Color.White,
-                    isDark = isDarkMode
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = "Out of Safe Zone Buzzer",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
                 // Safe Zones Drawer Button
                 LiquidGlassCircleButton(
                     onClick = { showGeofenceSheet = true },
@@ -1532,26 +1509,6 @@ fun MapScreen(
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
-
-                    // Manual Breach Alarm Button inside Safe Zones drawer
-                    Button(
-                        onClick = {
-                            deviceViewModel.triggerBuzzerAlarm()
-                            showGeofenceSheet = false
-                            android.widget.Toast.makeText(
-                                context,
-                                "🚨 Buzzer Activated! Beeping for 5 seconds with Red LED.",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = LiquidRubyEmergency),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Trigger Safe Zone Breach Alarm (5s Buzzer)", fontWeight = FontWeight.Bold)
-                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 

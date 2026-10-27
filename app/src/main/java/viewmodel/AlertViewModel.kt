@@ -211,5 +211,42 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
             longitude = longitude
         )
     }
+
+    /**
+     * Triggers an immediate "Out of safe Zone" alert irrespective of any condition.
+     * Instantly updates Alert Page and Recent Activity, persists locally, and syncs to backend.
+     */
+    fun triggerOutOfSafeZoneAlert(latitude: Double? = null, longitude: Double? = null, onComplete: (() -> Unit)? = null) {
+        val now = System.currentTimeMillis()
+        val timeNow = istFormatter.format(Date(now))
+        val title = "Out of safe Zone"
+
+        val instantAlert = Alert(
+            id = null,
+            title = title,
+            time = timeNow,
+            type = "warning",
+            timestamp = now
+        )
+
+        val updated = sortAlerts(listOf(instantAlert) + _sharedAlerts.value.filterNot {
+            it.title == instantAlert.title && it.time == instantAlert.time
+        })
+
+        _sharedAlerts.value = updated
+        AlertLocalStore.saveAlerts(getApplication(), updated)
+
+        // Sync to backend so database log and incident activity are recorded
+        repository.createAlert(
+            userId = currentUid,
+            deviceId = currentDeviceId,
+            title = title,
+            type = "warning",
+            latitude = latitude,
+            longitude = longitude
+        )
+        refresh()
+        onComplete?.invoke()
+    }
 }
 
