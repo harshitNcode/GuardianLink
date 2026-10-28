@@ -183,8 +183,9 @@ void buzzerAlarmTask(void *pvParameters)
         // 1. Buzzer active continuously for 5 seconds irrespective of anything
         digitalWrite(BUZZER_PIN, HIGH);
 
-        // 2. Continuous Solid Red LED for 5 seconds
-        digitalWrite(RGB_RED_PIN,   HIGH);
+        // 2. High-visibility Rapid Blinking Red LED for 5 seconds (100ms flash)
+        bool blink = ((elapsed / 100) % 2) == 0;
+        digitalWrite(RGB_RED_PIN,   blink ? HIGH : LOW);
         digitalWrite(RGB_GREEN_PIN, LOW);
         digitalWrite(RGB_BLUE_PIN,  LOW);
       }
@@ -932,16 +933,25 @@ void sendTelemetry()
     // Parse server response to check for safe zone breach or buzzer alarm triggers
     StaticJsonDocument<512> respDoc;
     DeserializationError err = deserializeJson(respDoc, response);
+    bool breach = false;
+    bool buzzer = false;
+    bool sos = false;
+
     if (!err)
     {
-      bool breach = respDoc["breach"] | false;
-      bool buzzer = respDoc["buzzer"] | false;
-      bool sos = respDoc["sos"] | false;
+      breach = respDoc["breach"] | false;
+      buzzer = respDoc["buzzer"] | false;
+      sos = respDoc["sos"] | false;
+    }
 
-      if ((breach || buzzer || sos) && !buzzerAlarmActive5Sec)
-      {
-        triggerBuzzer5Sec();
-      }
+    // Direct substring fallback ensures bulletproof trigger even if JSON parser runs low on heap
+    if (response.indexOf("\"buzzer\":true") >= 0 || response.indexOf("\"buzzer\": true") >= 0) buzzer = true;
+    if (response.indexOf("\"breach\":true") >= 0 || response.indexOf("\"breach\": true") >= 0) breach = true;
+    if (response.indexOf("\"sos\":true") >= 0    || response.indexOf("\"sos\": true") >= 0)    sos = true;
+
+    if ((breach || buzzer || sos) && !buzzerAlarmActive5Sec)
+    {
+      triggerBuzzer5Sec();
     }
 
     if (httpCode == 200 || httpCode == 201)
