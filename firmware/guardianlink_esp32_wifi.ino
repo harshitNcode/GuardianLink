@@ -629,7 +629,7 @@ void drawOLED()
   else if (now - lastPageSwitch >= PAGE_INTERVAL)
   {
     lastPageSwitch = now;
-    oledPage = (oledPage + 1) % 3; // Alternate Page 0, 1 & 2
+    oledPage = (oledPage + 1) % 2; // Alternate Page 0 (Heart Rate) & Page 1 (Climate)
   }
 
   display.clearDisplay();
@@ -757,29 +757,7 @@ void drawOLED()
     display.print((int)dhtHumidity);
     display.print("%");
   }
-  // ---------------- PAGE 2: WI-FI & LOCAL IP ----------------
-  else if (oledPage == 2)
-  {
-    display.setCursor(0, 14);
-    display.print("NETWORK & WI-FI");
 
-    display.setTextSize(1);
-    display.setCursor(4, 28);
-    display.printf("SSID: %s", WIFI_SSID);
-
-    display.setCursor(4, 40);
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      display.printf("IP: %s", WiFi.localIP().toString().c_str());
-    }
-    else
-    {
-      display.print("IP: Connecting...");
-    }
-
-    display.setCursor(4, 52);
-    display.print("UDP Port: 8888 [READY]");
-  }
 
   display.display();
 }
