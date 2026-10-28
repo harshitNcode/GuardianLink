@@ -13,15 +13,8 @@ import java.util.concurrent.TimeUnit
 
 class DeviceRepository {
 
-    private val client = OkHttpClient.Builder()
-        .readTimeout(0, TimeUnit.MILLISECONDS) // No timeout for persistent WebSocket
-        .addInterceptor { chain ->
-            val request = chain.request().newBuilder()
-                .addHeader("Bypass-Tunnel-Reminder", "true")
-                .build()
-            chain.proceed(request)
-        }
-        .build()
+    private val client get() = ApiConfig.defaultClient
+    private val wsClient get() = ApiConfig.webSocketClient
 
     private var activeWebSocket: WebSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -171,7 +164,7 @@ class DeviceRepository {
             .addHeader("Bypass-Tunnel-Reminder", "true")
             .build()
 
-        activeWebSocket = client.newWebSocket(request, object : WebSocketListener() {
+        activeWebSocket = wsClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i("GuardianLink.Device", "Connected to FastAPI WebSocket: $wsUrl")
             }

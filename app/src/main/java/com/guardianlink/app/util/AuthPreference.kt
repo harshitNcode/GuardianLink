@@ -102,7 +102,7 @@ object AuthPreference {
     fun getServerHost(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val host = prefs.getString(KEY_SERVER_HOST, "guardianlink-api-itkx.onrender.com") ?: "guardianlink-api-itkx.onrender.com"
-        if (host == "172.18.112.25:8000" || host.isBlank()) {
+        if (host.isBlank() || host == "172.18.112.25:8000" || host.startsWith("192.168.") || host.startsWith("172.") || host.startsWith("10.") || host.contains("localhost")) {
             setServerHost(context, "guardianlink-api-itkx.onrender.com")
             return "guardianlink-api-itkx.onrender.com"
         }

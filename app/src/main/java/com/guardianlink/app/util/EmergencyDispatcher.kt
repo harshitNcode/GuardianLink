@@ -15,7 +15,7 @@ import java.net.URLEncoder
 
 object EmergencyDispatcher {
 
-    private val httpClient = OkHttpClient()
+    private val httpClient get() = com.guardianlink.app.data.ApiConfig.defaultClient
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     fun dispatchEmergencyAlert(

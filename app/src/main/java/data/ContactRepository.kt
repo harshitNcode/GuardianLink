@@ -13,7 +13,7 @@ import java.io.IOException
 
 class ContactRepository {
 
-    private val client = OkHttpClient()
+    private val client get() = ApiConfig.defaultClient
     private val mainHandler = Handler(Looper.getMainLooper())
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
