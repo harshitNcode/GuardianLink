@@ -50,7 +50,8 @@ def startup_seed_demo_device():
     from app.models.device import Device
     from app.models.geofence import GeofenceZone
     from app.models.alert import Alert
-    from app.models.telemetry import TelemetryLog
+    # from app.models.device import TelemetryLog
+    from app.models.device import TelemetryLog
     db = SessionLocal()
     try:
         # 1. Permanently remove any legacy mock geofences by name
