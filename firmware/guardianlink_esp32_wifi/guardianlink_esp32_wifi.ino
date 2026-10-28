@@ -880,7 +880,7 @@ void sendTelemetry()
     http.begin(client, SERVER_URL);
   }
 
-  http.setTimeout(1000); // 1-second timeout (prevents blocking)
+  http.setTimeout(3500); // 3.5-second timeout for cloud HTTPS handshake (safe outside HR measurement)
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Bypass-Tunnel-Reminder", "true");
   http.addHeader("User-Agent", "GuardianLink-ESP32");

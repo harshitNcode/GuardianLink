@@ -44,7 +44,7 @@ const char* WIFI_PASSWORD = "123454321";
 //   "https://guardianlink-api-xxxx.onrender.com/api/v1/telemetry"
 // - If testing locally on your laptop:
 //   "http://192.168.x.x:8000/api/v1/telemetry"
-const char* SERVER_URL    = "https://guardianlink-api-xxxx.onrender.com/api/v1/telemetry";
+const char* SERVER_URL    = "https://guardianlink-api-itkx.onrender.com/api/v1/telemetry";
 
 // Unique hardware identifier (paired with the GuardianLink Android app)
 const char* DEVICE_ID     = "demo_device";
@@ -880,7 +880,7 @@ void sendTelemetry()
     http.begin(client, SERVER_URL);
   }
 
-  http.setTimeout(1000); // 1-second timeout (prevents blocking)
+  http.setTimeout(3500); // 3.5-second timeout for cloud HTTPS handshake (safe outside HR measurement)
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Bypass-Tunnel-Reminder", "true");
   http.addHeader("User-Agent", "GuardianLink-ESP32");

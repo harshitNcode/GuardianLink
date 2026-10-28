@@ -5,7 +5,7 @@ object ApiConfig {
      * Default server host (Configurable at runtime in Settings).
      * Connects directly to the backend over LAN or tunnel.
      */
-    var HOST = "172.18.112.25:8000"
+    var HOST = "guardianlink-api-itkx.onrender.com"
 
     /**
      * Automatically use HTTPS/WSS for domain names (e.g. ngrok, localtunnel),
