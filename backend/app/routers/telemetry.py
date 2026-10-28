@@ -15,31 +15,53 @@ router = APIRouter(prefix="/api/v1/telemetry", tags=["Telemetry & Devices"])
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
-# Fast in-memory buzzer state tracker (immediate response, zero database query overhead)
-ACTIVE_BUZZER_TIMESTAMPS: dict = {}
+# Fast in-memory one-shot buzzer triggers. Consumed once delivered to the device so it never loops!
+PENDING_BUZZER_TRIGGERS: set = set()
+BUZZER_TRIGGER_EXPIRY: dict = {}
 DEVICE_LOCAL_IP_MAP: dict = {}
 
 
 def trigger_device_buzzer(device_id: str):
     now = time.time()
-    ACTIVE_BUZZER_TIMESTAMPS[device_id] = now
-    ACTIVE_BUZZER_TIMESTAMPS["demo_device"] = now
+    PENDING_BUZZER_TRIGGERS.add(device_id)
+    PENDING_BUZZER_TRIGGERS.add("demo_device")
+    # Expires in 15 seconds if unconsumed so stale triggers don't linger
+    BUZZER_TRIGGER_EXPIRY[device_id] = now + 15.0
+    BUZZER_TRIGGER_EXPIRY["demo_device"] = now + 15.0
+
+
+def pop_device_buzzer(device_id: str) -> bool:
+    """Check if a buzzer trigger is pending for this device, and CONSUME it immediately so it only fires ONCE."""
+    now = time.time()
+    stale = [k for k, exp in list(BUZZER_TRIGGER_EXPIRY.items()) if now > exp]
+    for k in stale:
+        BUZZER_TRIGGER_EXPIRY.pop(k, None)
+        PENDING_BUZZER_TRIGGERS.discard(k)
+
+    if device_id in PENDING_BUZZER_TRIGGERS or "demo_device" in PENDING_BUZZER_TRIGGERS:
+        PENDING_BUZZER_TRIGGERS.discard(device_id)
+        PENDING_BUZZER_TRIGGERS.discard("demo_device")
+        BUZZER_TRIGGER_EXPIRY.pop(device_id, None)
+        BUZZER_TRIGGER_EXPIRY.pop("demo_device", None)
+        return True
+    return False
 
 
 def is_device_buzzer_active(device_id: str) -> bool:
+    """Read-only check for whether a buzzer is pending without consuming."""
     now = time.time()
-    ts = max(
-        ACTIVE_BUZZER_TIMESTAMPS.get(device_id, 0.0),
-        ACTIVE_BUZZER_TIMESTAMPS.get("demo_device", 0.0)
-    )
-    return (now - ts) < 25.0  # Active for 25 seconds
+    stale = [k for k, exp in list(BUZZER_TRIGGER_EXPIRY.items()) if now > exp]
+    for k in stale:
+        BUZZER_TRIGGER_EXPIRY.pop(k, None)
+        PENDING_BUZZER_TRIGGERS.discard(k)
+    return (device_id in PENDING_BUZZER_TRIGGERS or "demo_device" in PENDING_BUZZER_TRIGGERS)
 
 
 def get_current_ist_time_str() -> str:
     return datetime.datetime.now(IST).strftime("%d %b, %I:%M %p")
 
 
-def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
+def format_device_status(device: Device, db: Optional[Session] = None, consume_buzzer: bool = False) -> dict:
     lat = device.last_latitude
     lon = device.last_longitude
 
@@ -92,24 +114,18 @@ def format_device_status(device: Device, db: Optional[Session] = None) -> dict:
             if past_hum and past_hum[0]:
                 hum = past_hum[0]
 
-        # Check active buzzer state from in-memory triggers or recent database alerts
-        is_buzzer = is_device_buzzer_active(device.device_id) or device.sos
-        is_breached = is_device_buzzer_active(device.device_id)
-
-        if not is_buzzer:
-            recent_alert = db.query(Alert).filter(
-                Alert.device_id == device.device_id,
-                Alert.created_at >= datetime.datetime.utcnow() - datetime.timedelta(seconds=25)
-            ).order_by(Alert.created_at.desc()).first()
-
-            if recent_alert:
-                if "Breach" in recent_alert.title or "Safe Zone" in recent_alert.title or recent_alert.type in ["warning", "danger"]:
-                    is_buzzer = True
-                    is_breached = True
-
+        # Check active buzzer state: consume if requested by ESP32 ingestion
+        if consume_buzzer:
+            is_buzzer = pop_device_buzzer(device.device_id) or device.sos
+        else:
+            is_buzzer = is_device_buzzer_active(device.device_id) or device.sos
+        is_breached = is_buzzer
     else:
-        is_buzzer = is_device_buzzer_active(device.device_id) or device.sos
-        is_breached = is_device_buzzer_active(device.device_id)
+        if consume_buzzer:
+            is_buzzer = pop_device_buzzer(device.device_id) or device.sos
+        else:
+            is_buzzer = is_device_buzzer_active(device.device_id) or device.sos
+        is_breached = is_buzzer
 
     dev_ip = DEVICE_LOCAL_IP_MAP.get(device.device_id) or DEVICE_LOCAL_IP_MAP.get("demo_device")
 
@@ -285,7 +301,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         db.commit()
 
     # 5. Broadcast to connected WebSocket clients (Android app)
-    status_dict = format_device_status(device, db)
+    status_dict = format_device_status(device, db, consume_buzzer=True)
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
     if payload.device_id != target_device_id:
         await ws_manager.broadcast_to_device(payload.device_id, status_dict)
@@ -372,7 +388,7 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
                     longitude=payload.longitude
                 )
 
-    status_dict = format_device_status(device, db)
+    status_dict = format_device_status(device, db, consume_buzzer=True)
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
     return DeviceStatusResponse(**status_dict)
 
@@ -442,7 +458,7 @@ async def trigger_buzzer_endpoint(device_id: str, db: Session = Depends(get_db))
     )
 
     # 3. Broadcast status to ESP32 and phone app with buzzer=True and breach=True
-    status_dict = format_device_status(device, db)
+    status_dict = format_device_status(device, db, consume_buzzer=False)
     status_dict["buzzer"] = True
     status_dict["breach"] = True
     await ws_manager.broadcast_to_device(target_device_id, status_dict)
@@ -453,7 +469,7 @@ async def trigger_buzzer_endpoint(device_id: str, db: Session = Depends(get_db))
 def check_device_buzzer_status(device_id: str):
     """Ultra-fast endpoint for ESP32 to poll buzzer/breach alarm state in milliseconds without DB overhead."""
     target = "demo_device" if (device_id == "string" or not device_id) else device_id
-    active = is_device_buzzer_active(target)
+    active = pop_device_buzzer(target)
     return {"buzzer": active, "breach": active}
 
 

@@ -204,9 +204,19 @@ void buzzerAlarmTask(void *pvParameters)
   }
 }
 
+volatile unsigned long lastAlarmTriggerTime = 0;
+
 void triggerBuzzer5Sec()
 {
-  buzzerAlarmStartTime = millis();
+  unsigned long now = millis();
+  // Cooldown protection: If alarm is currently sounding (5s) or triggered within the last 15s cooldown, do NOT re-trigger!
+  if (buzzerAlarmActive5Sec || (now - lastAlarmTriggerTime < 15000 && lastAlarmTriggerTime > 0))
+  {
+    Serial.println("[ALARM] Duplicate trigger suppressed: Alarm active or in cooldown.");
+    return;
+  }
+  lastAlarmTriggerTime = now;
+  buzzerAlarmStartTime = now;
   buzzerAlarmActive5Sec = true;
   digitalWrite(BUZZER_PIN, HIGH);
   digitalWrite(RGB_RED_PIN, HIGH);
@@ -927,10 +937,15 @@ void sendTelemetry()
     if (response.indexOf("\"breach\":true") >= 0 || response.indexOf("\"breach\": true") >= 0) breach = true;
     if (response.indexOf("\"sos\":true") >= 0    || response.indexOf("\"sos\": true") >= 0)    sos = true;
 
-    if ((breach || buzzer || sos) && !buzzerAlarmActive5Sec)
+    // Rising-edge tracking: only trigger when transitioning into breach/buzzer state
+    static bool prevAlarmFlag = false;
+    bool currentAlarmFlag = (breach || buzzer || sos);
+
+    if (currentAlarmFlag && !prevAlarmFlag)
     {
       triggerBuzzer5Sec();
     }
+    prevAlarmFlag = currentAlarmFlag;
 
     if (httpCode == 200 || httpCode == 201)
     {
