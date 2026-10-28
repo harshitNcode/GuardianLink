@@ -44,7 +44,7 @@ const char* WIFI_PASSWORD = "123454321";
 //   "https://guardianlink-api-xxxx.onrender.com/api/v1/telemetry"
 // - If testing locally on your laptop:
 //   "http://192.168.x.x:8000/api/v1/telemetry"
-const char* SERVER_URL    = "https://guardianlink-api-xxxx.onrender.com/api/v1/telemetry";
+const char* SERVER_URL    = "https://guardianlink-api-itkx.onrender.com/api/v1/telemetry";
 
 // Unique hardware identifier (paired with the GuardianLink Android app)
 const char* DEVICE_ID     = "demo_device";

@@ -212,12 +212,10 @@ def resolve_alert(alert_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/{alert_id}")
 def delete_alert_by_id(alert_id: int, db: Session = Depends(get_db)):
-    """Delete a specific alert by its database ID (except SOS alerts)."""
+    """Delete a specific alert by its database ID."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-    if alert.type == "danger" or "sos" in alert.title.lower():
-        raise HTTPException(status_code=400, detail="Emergency SOS alerts cannot be deleted")
     db.delete(alert)
     db.commit()
     return {"status": "deleted", "id": alert_id}
@@ -229,8 +227,8 @@ def delete_alert_by_query(
     time: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Delete non-SOS alerts matching title or time."""
-    query = db.query(Alert).filter(Alert.type != "danger", ~Alert.title.ilike("%sos%"))
+    """Delete alerts matching title or time."""
+    query = db.query(Alert)
     if title:
         query = query.filter(Alert.title == title)
     if time:

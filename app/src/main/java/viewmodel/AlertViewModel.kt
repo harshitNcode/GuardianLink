@@ -54,23 +54,23 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun sortAlerts(list: List<Alert>): List<Alert> {
-        val now = System.currentTimeMillis()
-        return list.sortedWith(
-            // Active unresolved SOS from within last 2 hours stays pinned at very top; otherwise strictly newest first
-            compareByDescending<Alert> {
-                (it.type == "danger" || it.title.contains("SOS", ignoreCase = true)) &&
-                !it.title.contains("Stood Down", ignoreCase = true) &&
-                !it.title.contains("Resolved", ignoreCase = true) &&
-                (now - it.timestamp) < 7200_000L
-            }.thenByDescending { it.timestamp }
-        ).take(MAX_SAVED_ALERTS)
+        // Strictly sort by timestamp newest first (latest time and date to the very top)
+        return list.sortedByDescending { it.timestamp }.take(MAX_SAVED_ALERTS)
+    }
+
+    private fun isAlertDeleted(alert: Alert, deletedSignatures: Set<String>): Boolean {
+        if (alert.id != null && deletedSignatures.contains("${alert.id}")) return true
+        if (alert.id != null && deletedSignatures.contains("${alert.id}_${alert.title}")) return true
+        if (deletedSignatures.contains("${alert.title}_${alert.time}")) return true
+        if (deletedSignatures.contains("${alert.title}_${alert.timestamp}")) return true
+        return false
     }
 
     fun triggerSOS(onComplete: (() -> Unit)? = null) {
         val now = System.currentTimeMillis()
         val timeNow = istFormatter.format(Date(now))
         val instantAlert = Alert(
-            id = null,
+            id = (now % 10000000).toInt(),
             title = "Emergency SOS Triggered",
             time = timeNow,
             type = "danger",
@@ -94,7 +94,7 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
         val now = System.currentTimeMillis()
         val timeNow = istFormatter.format(Date(now))
         val instantAlert = Alert(
-            id = null,
+            id = (now % 10000000).toInt(),
             title = "Emergency SOS Stood Down (Resolved)",
             time = timeNow,
             type = "info",
@@ -115,52 +115,46 @@ class AlertViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteAlert(alert: Alert) {
-        // SOS alerts are critical emergency records and cannot be deleted
-        if (alert.type == "danger" || alert.title.contains("SOS", ignoreCase = true)) {
-            return
-        }
-
-        // 1. Mark signatures as permanently deleted locally
+        // 1. Mark all signature representations as permanently deleted locally
         val sig1 = "${alert.title}_${alert.time}"
         val sig2 = "${alert.id}_${alert.title}"
+        val sig3 = "${alert.title}_${alert.timestamp}"
         AlertLocalStore.markAlertDeleted(getApplication(), sig1)
+        AlertLocalStore.markAlertDeleted(getApplication(), sig3)
         if (alert.id != null) {
             AlertLocalStore.markAlertDeleted(getApplication(), sig2)
+            AlertLocalStore.markAlertDeleted(getApplication(), "${alert.id}")
         }
 
         // 2. Remove from active UI state immediately
         val updated = _sharedAlerts.value.filterNot {
             (alert.id != null && it.id == alert.id) ||
-            (it.title == alert.title && it.time == alert.time)
+            (it.title == alert.title && it.time == alert.time) ||
+            (it.title == alert.title && it.timestamp == alert.timestamp)
         }
         _sharedAlerts.value = updated
         AlertLocalStore.saveAlerts(getApplication(), updated)
 
         // 3. Delete from remote backend SQLite DB
-        repository.deleteAlert(alert)
+        repository.deleteAlert(alert) {
+            refresh()
+        }
     }
 
     fun refresh() {
         val deletedSignatures = AlertLocalStore.getDeletedSignatures(getApplication())
         repository.listenToAlerts(currentUid) { list ->
             // Filter out any locally deleted alerts from backend payload
-            val cleanRemote = list.filterNot { alert ->
-                val sig1 = "${alert.title}_${alert.time}"
-                val sig2 = "${alert.id}_${alert.title}"
-                deletedSignatures.contains(sig1) || deletedSignatures.contains(sig2)
-            }
+            val cleanRemote = list.filterNot { isAlertDeleted(it, deletedSignatures) }
 
-            // Merge local and clean remote alerts, dedup, and sort strictly newest first
-            val current = _sharedAlerts.value
+            // Current alerts filtered against deleted signatures
+            val current = _sharedAlerts.value.filterNot { isAlertDeleted(it, deletedSignatures) }
+
             val combined = mutableListOf<Alert>()
             combined.addAll(cleanRemote)
             for (item in current) {
-                val sig1 = "${item.title}_${item.time}"
-                val sig2 = "${item.id}_${item.title}"
-                if (!deletedSignatures.contains(sig1) && !deletedSignatures.contains(sig2)) {
-                    if (combined.none { (item.id != null && it.id == item.id) || (it.title == item.title && it.time == item.time) }) {
-                        combined.add(item)
-                    }
+                if (combined.none { (item.id != null && it.id == item.id) || (it.title == item.title && it.time == item.time) }) {
+                    combined.add(item)
                 }
             }
 
