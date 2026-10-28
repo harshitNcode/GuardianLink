@@ -44,6 +44,7 @@ import com.guardianlink.app.data.GeofenceWktHelper
 import com.guardianlink.app.model.GeofenceZone
 import com.guardianlink.app.ui.theme.*
 import com.guardianlink.app.util.MapPreference
+import com.guardianlink.app.util.PhoneGpsManager
 import com.guardianlink.app.viewmodel.AlertViewModel
 import com.guardianlink.app.viewmodel.DeviceViewModel
 import com.guardianlink.app.viewmodel.DrawingShape
@@ -107,7 +108,8 @@ fun MapScreen(
     val context = LocalContext.current
 
     // Immediate Geofence Breach Check for Monitored Device (Phone 2)
-    // Strictly evaluates ONLY Phone 2 (status.latitude/status.longitude), NEVER myLocationPoint (Phone 1)
+    // Triggers buzzer and red LED when Phone 2 was inside and moves outside the safe zone
+    var wasInsideSafeZone by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(
         status.latitude,
         status.longitude,
@@ -116,17 +118,30 @@ fun MapScreen(
     ) {
         val lat = status.latitude
         val lng = status.longitude
-        if (lat != null && lng != null && status.hasValidLocation && geofenceViewModel.geofences.isNotEmpty()) {
+        val activeZones = geofenceViewModel.geofences.filter { it.isActive }
+        if (lat != null && lng != null && status.hasValidLocation && activeZones.isNotEmpty()) {
             val devPoint = GeoPoint(lat, lng)
-            geofenceViewModel.checkBreach(devPoint) { breachedZone, breachDist ->
-                alertViewModel.recordSafeZoneBreach(breachedZone, breachDist, lat, lng)
+            val isInsideNow = activeZones.any { GeofenceWktHelper.isPointInsideZone(devPoint, it) }
+
+            if (wasInsideSafeZone == true && !isInsideNow) {
+                // Phone 2 was inside the safe zone and has now stepped outside!
+                val closestZone = activeZones.minByOrNull {
+                    GeofenceWktHelper.distanceBetween(devPoint, GeoPoint(it.centerLatitude, it.centerLongitude))
+                } ?: activeZones.first()
+                val dist = GeofenceWktHelper.distanceBetween(devPoint, GeoPoint(closestZone.centerLatitude, closestZone.centerLongitude))
+                val breachDist = if (closestZone.radiusMeters > 0) kotlin.math.max(0.0, dist - closestZone.radiusMeters).toInt() else dist.toInt()
+
+                alertViewModel.recordSafeZoneBreach(closestZone.name, breachDist, lat, lng)
                 deviceViewModel.triggerBuzzerAlarm()
                 Toast.makeText(
                     context,
-                    "⚠️ Perimeter Breach: Monitored Phone 2 is outside '$breachedZone' (${breachDist}m away)!",
+                    "⚠️ Safe Zone Breach: Phone 2 moved outside '${closestZone.name}' (${breachDist}m away)!",
                     Toast.LENGTH_LONG
                 ).show()
             }
+            wasInsideSafeZone = isInsideNow
+        } else if (activeZones.isEmpty()) {
+            wasInsideSafeZone = null
         }
     }
 
@@ -148,6 +163,21 @@ fun MapScreen(
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var deviceMarkerRef by remember { mutableStateOf<Marker?>(null) }
     var hasAutoCenteredOnDevice by remember { mutableStateOf(false) }
+
+    // Phone GPS Broadcasting (Phone 2 mode)
+    val isSharingLocation by PhoneGpsManager.isBroadcasting.collectAsState()
+    val shareLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                      permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            PhoneGpsManager.startBroadcasting(context)
+            Toast.makeText(context, "Broadcasting this phone's live GPS to companion...", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Location permission required to share GPS", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // User Location & Distance Path States
     var showMyLocation by rememberSaveable { mutableStateOf(false) }
@@ -338,7 +368,7 @@ fun MapScreen(
         val hasDeviceLoc = status.hasValidLocation && !status.isDisconnected
         val devicePoint = if (hasDeviceLoc) GeoPoint(status.latitude!!, status.longitude!!) else null
 
-        if (showDistanceLine && showMyLocation && myLocationPoint != null && devicePoint != null) {
+        if (showMyLocation && myLocationPoint != null && devicePoint != null) {
             val distM = myLocationPoint!!.distanceToAsDouble(devicePoint)
             val distText = if (distM >= 1000) "%.2f km".format(distM / 1000) else "${distM.toInt()} m"
 
@@ -1115,7 +1145,7 @@ fun MapScreen(
                                     showLayerMenu = false
                                 },
                                 leadingIcon = {
-                                    if (showDistanceLine) {
+                                    if (showMyLocation) {
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
@@ -1134,7 +1164,7 @@ fun MapScreen(
                     }
 
                     // Active Readout Pill: Distance Line or My GPS Active
-                    if (showDistanceLine) {
+                    if (showMyLocation) {
                         val hasDevice = status.hasValidLocation && !status.isDisconnected
                         val myLoc = myLocationPoint
 
@@ -1344,6 +1374,40 @@ fun MapScreen(
                     contentDescription = "Zoom Out",
                     tint = if (isDarkMode) Color.White else PrimaryBlue,
                     modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Share Live GPS (Broadcast from this phone as Phone 2)
+            LiquidGlassCircleButton(
+                onClick = {
+                    if (!isSharingLocation) {
+                        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                        if (hasFine || hasCoarse) {
+                            PhoneGpsManager.startBroadcasting(context)
+                            Toast.makeText(context, "Broadcasting this phone's live GPS to companion...", Toast.LENGTH_SHORT).show()
+                        } else {
+                            shareLocationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        }
+                    } else {
+                        PhoneGpsManager.stopBroadcasting()
+                        Toast.makeText(context, "GPS Broadcast stopped", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                size = 52.dp,
+                containerColor = if (isSharingLocation) (if (isDarkMode) LiquidNeonGreen else OnlineGreen) else (if (isDarkMode) LiquidGlassBgDark else LiquidGlassBgLight),
+                contentColor = if (isSharingLocation) (if (isDarkMode) LiquidCanvasDark else Color.White) else (if (isDarkMode) Color.White else PrimaryBlue),
+                isDark = isDarkMode
+            ) {
+                Icon(
+                    imageVector = if (isSharingLocation) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
+                    contentDescription = "Share Location",
+                    modifier = Modifier.size(24.dp)
                 )
             }
 

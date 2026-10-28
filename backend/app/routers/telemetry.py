@@ -209,6 +209,7 @@ async def ingest_telemetry(payload: TelemetryCreate, db: Session = Depends(get_d
         geofence_results = evaluate_geofences(db, target_device_id, current_lat, current_lon)
     if geofence_results and not any(r.is_inside for r in geofence_results):
         # Monitored device is outside ALL defined safe zones -> trigger breach alert for closest zone
+        trigger_device_buzzer(target_device_id)
         closest_breached = min(geofence_results, key=lambda r: r.distance_meters)
         recent_alert = db.query(Alert).filter(
             Alert.device_id == target_device_id,
@@ -343,6 +344,7 @@ async def update_device_location(device_id: str, payload: LocationUpdate, db: Se
         geofence_results = evaluate_geofences(db, target_device_id, payload.latitude, payload.longitude)
         if geofence_results and not any(r.is_inside for r in geofence_results):
             # Monitored device is outside ALL defined safe zones -> trigger breach alert for closest zone
+            trigger_device_buzzer(target_device_id)
             closest_breached = min(geofence_results, key=lambda r: r.distance_meters)
             recent_alert = db.query(Alert).filter(
                 Alert.device_id == target_device_id,
